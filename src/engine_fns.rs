@@ -228,15 +228,15 @@ pub fn intersect_list_sort(a: &IntersectNode, b: &IntersectNode) -> std::cmp::Or
 
 /// Get the maxima pair for an active edge
 /// Direct port from clipper.engine.cpp line 254
-pub fn get_maxima_pair(e: &Active, active_arena: &[Active]) -> Option<usize> {
-    let mut e2_idx = e.next_in_ael;
-    while let Some(idx) = e2_idx {
-        if active_arena[idx].vertex_top == e.vertex_top {
-            return Some(idx);
+pub fn get_maxima_pair(e: &Active, active_arena: &[Active]) -> usize {
+    let mut e2 = e.next_in_ael;
+    while e2 != NONE {
+        if active_arena[e2].vertex_top == e.vertex_top {
+            return e2;
         }
-        e2_idx = active_arena[idx].next_in_ael;
+        e2 = active_arena[e2].next_in_ael;
     }
-    None
+    NONE
 }
 
 /// Get current Y maxima vertex for open paths
@@ -487,7 +487,7 @@ pub fn swap_front_back_sides(outrec_idx: usize, outrec_list: &mut [OutRec], outp
 /// Direct port from clipper.engine.cpp EdgesAdjacentInAEL (line 468)
 #[inline]
 pub fn edges_adjacent_in_ael(inode: &IntersectNode, active_arena: &[Active]) -> bool {
-    active_arena[inode.edge1].next_in_ael == Some(inode.edge2)
+    active_arena[inode.edge1].next_in_ael == inode.edge2
         || active_arena[inode.edge1].prev_in_ael == Some(inode.edge2)
 }
 
@@ -896,16 +896,16 @@ pub fn uncouple_outrec(e_idx: usize, active_arena: &mut [Active], outrec_list: &
 
 /// Extract an active from the SEL (sorted edge list)
 /// Direct port from clipper.engine.cpp ExtractFromSEL
-pub fn extract_from_sel(e_idx: usize, active_arena: &mut [Active]) -> Option<usize> {
+pub fn extract_from_sel(e_idx: usize, active_arena: &mut [Active]) -> usize {
     let next = active_arena[e_idx].next_in_sel;
-    if let Some(next_idx) = next {
-        active_arena[next_idx].prev_in_sel = active_arena[e_idx].prev_in_sel;
+    if next != NONE {
+        active_arena[next].prev_in_sel = active_arena[e_idx].prev_in_sel;
     }
     if let Some(prev_idx) = active_arena[e_idx].prev_in_sel {
         active_arena[prev_idx].next_in_sel = next;
     }
     active_arena[e_idx].prev_in_sel = None;
-    active_arena[e_idx].next_in_sel = None;
+    active_arena[e_idx].next_in_sel = NONE;
     next
 }
 
@@ -915,8 +915,8 @@ pub fn insert1_before2_in_sel(tmp_idx: usize, left_idx: usize, active_arena: &mu
     let prev = active_arena[left_idx].prev_in_sel;
     active_arena[tmp_idx].prev_in_sel = prev;
     if let Some(prev_idx) = prev {
-        active_arena[prev_idx].next_in_sel = Some(tmp_idx);
+        active_arena[prev_idx].next_in_sel = tmp_idx;
     }
-    active_arena[tmp_idx].next_in_sel = Some(left_idx);
+    active_arena[tmp_idx].next_in_sel = left_idx;
     active_arena[left_idx].prev_in_sel = Some(tmp_idx);
 }

@@ -98,7 +98,7 @@ fn test_active_new() {
     assert_eq!(a.wind_cnt2, 0);
     assert!(a.outrec.is_none());
     assert!(a.prev_in_ael.is_none());
-    assert!(a.next_in_ael.is_none());
+    assert!(a.next_in_ael == NONE);
     assert_eq!(a.join_with, JoinWith::NoJoin);
 }
 
@@ -929,10 +929,10 @@ fn test_top_x_bankers_rounding() {
         wind_cnt2: 0,
         outrec: None,
         prev_in_ael: None,
-        next_in_ael: None,
+        next_in_ael: NONE,
         prev_in_sel: None,
-        next_in_sel: None,
-        jump: None,
+        next_in_sel: NONE,
+        jump: NONE,
         vertex_top: 0,
         local_min: 0,
         is_left_bound: false,
