@@ -229,12 +229,12 @@ pub fn intersect_list_sort(a: &IntersectNode, b: &IntersectNode) -> std::cmp::Or
 /// Get the maxima pair for an active edge
 /// Direct port from clipper.engine.cpp line 254
 pub fn get_maxima_pair(e: &Active, active_arena: &[Active]) -> usize {
-    let mut e2 = e.next_in_ael;
-    while e2 != NONE {
-        if active_arena[e2].vertex_top == e.vertex_top {
-            return e2;
+    let mut e2_idx = e.next_in_ael;
+    while e2_idx != NONE {
+        if active_arena[e2_idx].vertex_top == e.vertex_top {
+            return e2_idx;
         }
-        e2 = active_arena[e2].next_in_ael;
+        e2_idx = active_arena[e2_idx].next_in_ael;
     }
     NONE
 }
