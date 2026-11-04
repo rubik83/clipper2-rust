@@ -1965,17 +1965,15 @@ impl ClipperBase {
                 )
             {
                 let e3_idx = self.find_edge_with_matching_loc_min(edge_o);
-                if e3_idx != NONE {
-                    if is_hot_edge(&self.active_arena[e3_idx]) {
-                        let e3_or = self.active_arena[e3_idx].outrec.unwrap();
-                        self.active_arena[edge_o].outrec = Some(e3_or);
-                        if self.active_arena[edge_o].wind_dx > 0 {
-                            self.set_sides(e3_or, edge_o, e3_idx);
-                        } else {
-                            self.set_sides(e3_or, e3_idx, edge_o);
-                        }
-                        return;
+                if e3_idx != NONE && is_hot_edge(&self.active_arena[e3_idx]) {
+                    let e3_or = self.active_arena[e3_idx].outrec.unwrap();
+                    self.active_arena[edge_o].outrec = Some(e3_or);
+                    if self.active_arena[edge_o].wind_dx > 0 {
+                        self.set_sides(e3_or, edge_o, e3_idx);
+                    } else {
+                        self.set_sides(e3_or, e3_idx, edge_o);
                     }
+                    return;
                 }
                 _result_op = self.start_open_path(edge_o, pt);
             } else {
