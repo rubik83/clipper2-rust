@@ -1278,29 +1278,29 @@ impl ClipperBase {
 
     /// Set wind count for an open path edge
     /// Direct port from clipper.engine.cpp SetWindCountForOpenPathEdge (line 1089)
-    fn set_wind_count_for_open_path_edge(&mut self, e: usize) {
-        let mut e2 = self.actives;
+    fn set_wind_count_for_open_path_edge(&mut self, e_idx: usize) {
+        let mut e2i = self.actives;
         if self.fillrule == FillRule::EvenOdd {
             let mut cnt1 = 0i32;
             let mut cnt2 = 0i32;
-            while e2 != e {
-                if self.get_poly_type_idx(e2) == PathType::Clip {
+            while e2i != e_idx {
+                if self.get_poly_type_idx(e2i) == PathType::Clip {
                     cnt2 += 1;
-                } else if !self.is_open_idx(e2) {
+                } else if !self.is_open_idx(e2i) {
                     cnt1 += 1;
                 }
-                e2 = self.active_arena[e2].next_in_ael;
+                e2i = self.active_arena[e2i].next_in_ael;
             }
-            self.active_arena[e].wind_cnt = if is_odd(cnt1) { 1 } else { 0 };
-            self.active_arena[e].wind_cnt2 = if is_odd(cnt2) { 1 } else { 0 };
+            self.active_arena[e_idx].wind_cnt = if is_odd(cnt1) { 1 } else { 0 };
+            self.active_arena[e_idx].wind_cnt2 = if is_odd(cnt2) { 1 } else { 0 };
         } else {
-            while e2 != e {
-                if self.get_poly_type_idx(e2) == PathType::Clip {
-                    self.active_arena[e].wind_cnt2 += self.active_arena[e2].wind_dx;
-                } else if !self.is_open_idx(e2) {
-                    self.active_arena[e].wind_cnt += self.active_arena[e2].wind_dx;
+            while e2i != e_idx {
+                if self.get_poly_type_idx(e2i) == PathType::Clip {
+                    self.active_arena[e_idx].wind_cnt2 += self.active_arena[e2i].wind_dx;
+                } else if !self.is_open_idx(e2i) {
+                    self.active_arena[e_idx].wind_cnt += self.active_arena[e2i].wind_dx;
                 }
-                e2 = self.active_arena[e2].next_in_ael;
+                e2i = self.active_arena[e2i].next_in_ael;
             }
         }
     }
