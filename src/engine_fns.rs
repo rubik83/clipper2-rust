@@ -21,7 +21,7 @@ pub fn is_odd(val: i32) -> bool {
 /// Direct port from clipper.engine.cpp line 67
 #[inline]
 pub fn is_hot_edge(e: &Active) -> bool {
-    e.outrec.is_some()
+    e.outrec != NONE
 }
 
 /// Check if an active edge is part of an open path
@@ -393,26 +393,26 @@ pub fn get_clean_path(op_start: usize, outpt_arena: &[OutPt]) -> Path64 {
 
 /// Get the real (non-disposed) OutRec by following owner chain
 /// Direct port from clipper.engine.cpp GetRealOutRec (line 412)
-pub fn get_real_outrec(outrec_list: &[OutRec], idx: usize) -> Option<usize> {
-    let mut i = Some(idx);
-    while let Some(cur) = i {
-        if outrec_list[cur].pts.is_some() {
-            return Some(cur);
+pub fn get_real_outrec(outrec_list: &[OutRec], idx: usize) -> usize {
+    let mut cur = idx;
+    while cur != NONE {
+        if outrec_list[cur].pts != NONE {
+            return cur;
         }
-        i = outrec_list[cur].owner;
+        cur = outrec_list[cur].owner;
     }
-    None
+    NONE
 }
 
 /// Check if an owner is valid (not circular)
 /// Direct port from clipper.engine.cpp IsValidOwner (line 418)
 pub fn is_valid_owner(outrec_list: &[OutRec], outrec_idx: usize, test_owner_idx: usize) -> bool {
-    let mut tmp = Some(test_owner_idx);
-    while let Some(idx) = tmp {
+    let mut idx = test_owner_idx;
+    while idx != NONE {
         if idx == outrec_idx {
             return false;
         }
-        tmp = outrec_list[idx].owner;
+        idx = outrec_list[idx].owner;
     }
     true
 }
@@ -439,21 +439,19 @@ pub fn is_very_small_triangle(op_idx: usize, outpt_arena: &[OutPt]) -> bool {
 
 /// Check if a closed path is valid
 /// Direct port from clipper.engine.cpp IsValidClosedPath (line 449)
-pub fn is_valid_closed_path(op: Option<usize>, outpt_arena: &[OutPt]) -> bool {
-    match op {
-        None => false,
-        Some(idx) => {
-            let next = outpt_arena[idx].next;
-            if next == idx {
-                return false;
-            }
-            let prev = outpt_arena[idx].prev;
-            if next == prev {
-                return false;
-            }
-            !is_very_small_triangle(idx, outpt_arena)
-        }
+pub fn is_valid_closed_path(idx: usize, outpt_arena: &[OutPt]) -> bool {
+    if idx == NONE {
+        return false;
     }
+    let next = outpt_arena[idx].next;
+    if next == idx {
+        return false;
+    }
+    let prev = outpt_arena[idx].prev;
+    if next == prev {
+        return false;
+    }
+    !is_very_small_triangle(idx, outpt_arena)
 }
 
 /// Check if the hot edge is ascending (front edge of its outrec)
@@ -464,8 +462,9 @@ pub fn outrec_is_ascending(
     outrec_list: &[OutRec],
     active_arena: &[Active],
 ) -> bool {
-    if let Some(or_idx) = active_arena[hot_edge_idx].outrec {
-        outrec_list[or_idx].front_edge == Some(hot_edge_idx)
+    let or_idx = active_arena[hot_edge_idx].outrec;
+    if or_idx != NONE {
+        outrec_list[or_idx].front_edge == hot_edge_idx
     } else {
         false
     }
@@ -473,14 +472,9 @@ pub fn outrec_is_ascending(
 
 /// Swap front and back sides of an OutRec
 /// Direct port from clipper.engine.cpp SwapFrontBackSides (line 460)
-pub fn swap_front_back_sides(outrec_idx: usize, outrec_list: &mut [OutRec], outpt_arena: &[OutPt]) {
-    std::mem::swap(
-        &mut outrec_list[outrec_idx].front_edge,
-        &mut outrec_list[outrec_idx].back_edge,
-    );
-    if let Some(pts) = outrec_list[outrec_idx].pts {
-        outrec_list[outrec_idx].pts = Some(outpt_arena[pts].next);
-    }
+pub fn swap_front_back_sides(outrec: &mut OutRec, outpt_arena: &[OutPt]) {
+    std::mem::swap(&mut outrec.front_edge, &mut outrec.back_edge);
+    outrec.pts = outpt_arena[outrec.pts].next;
 }
 
 /// Check if intersect node edges are adjacent in AEL
@@ -488,7 +482,7 @@ pub fn swap_front_back_sides(outrec_idx: usize, outrec_list: &mut [OutRec], outp
 #[inline]
 pub fn edges_adjacent_in_ael(inode: &IntersectNode, active_arena: &[Active]) -> bool {
     active_arena[inode.edge1].next_in_ael == inode.edge2
-        || active_arena[inode.edge1].prev_in_ael == Some(inode.edge2)
+        || active_arena[inode.edge1].prev_in_ael == inode.edge2
 }
 
 /// Check if an edge is joined
@@ -504,19 +498,17 @@ pub fn set_owner(outrec_list: &mut [OutRec], outrec_idx: usize, new_owner_idx: u
     // precondition: new_owner_idx is valid
     // Direct port from C++: new_owner->owner = GetRealOutRec(new_owner->owner);
     // When owner is None, GetRealOutRec returns None (C++ handles nullptr correctly)
-    outrec_list[new_owner_idx].owner = match outrec_list[new_owner_idx].owner {
-        Some(owner_idx) => get_real_outrec(outrec_list, owner_idx),
-        None => None,
-    };
-    let mut tmp = Some(new_owner_idx);
-    while let Some(t) = tmp {
-        if t == outrec_idx {
+    outrec_list[new_owner_idx].owner =
+        get_real_outrec(outrec_list, outrec_list[new_owner_idx].owner);
+    let mut tmp = new_owner_idx;
+    while tmp != NONE {
+        if tmp == outrec_idx {
             outrec_list[new_owner_idx].owner = outrec_list[outrec_idx].owner;
             break;
         }
-        tmp = outrec_list[t].owner;
+        tmp = outrec_list[tmp].owner;
     }
-    outrec_list[outrec_idx].owner = Some(new_owner_idx);
+    outrec_list[outrec_idx].owner = new_owner_idx;
 }
 
 /// Point in polygon test for OutPt-based polygons
@@ -829,23 +821,21 @@ pub fn get_last_op(
     active_arena: &[Active],
     outrec_list: &[OutRec],
     outpt_arena: &[OutPt],
-) -> Option<usize> {
-    if let Some(or_idx) = active_arena[hot_edge_idx].outrec {
-        let result = outrec_list[or_idx].pts?;
-        if outrec_list[or_idx].front_edge != Some(hot_edge_idx) {
-            Some(outpt_arena[result].next)
-        } else {
-            Some(result)
-        }
+) -> usize {
+    let or_idx = active_arena[hot_edge_idx].outrec;
+    let result = outrec_list[or_idx].pts;
+    if hot_edge_idx != outrec_list[or_idx].front_edge {
+        outpt_arena[result].next
     } else {
-        None
+        result
     }
 }
 
 /// Fix all OutPt outrec references in an OutRec
 /// Direct port from clipper.engine.cpp FixOutRecPts (line 2158)
 pub fn fix_outrec_pts(outrec_idx: usize, outrec_list: &[OutRec], outpt_arena: &mut [OutPt]) {
-    if let Some(pts) = outrec_list[outrec_idx].pts {
+    let pts = outrec_list[outrec_idx].pts;
+    if pts != NONE {
         let mut op = pts;
         loop {
             outpt_arena[op].outrec = outrec_idx;
@@ -882,15 +872,18 @@ pub fn move_splits(outrec_list: &mut [OutRec], from_or: usize, to_or: usize) {
 /// Uncouple an OutRec from its edges
 /// Direct port from clipper.engine.cpp UncoupleOutRec (line 425)
 pub fn uncouple_outrec(e_idx: usize, active_arena: &mut [Active], outrec_list: &mut [OutRec]) {
-    if let Some(or_idx) = active_arena[e_idx].outrec {
-        if let Some(fe) = outrec_list[or_idx].front_edge {
-            active_arena[fe].outrec = None;
+    let or_idx = active_arena[e_idx].outrec;
+    if or_idx != NONE {
+        let fe = outrec_list[or_idx].front_edge;
+        if fe != NONE {
+            active_arena[fe].outrec = NONE;
         }
-        if let Some(be) = outrec_list[or_idx].back_edge {
-            active_arena[be].outrec = None;
+        let be = outrec_list[or_idx].back_edge;
+        if be != NONE {
+            active_arena[be].outrec = NONE;
         }
-        outrec_list[or_idx].front_edge = None;
-        outrec_list[or_idx].back_edge = None;
+        outrec_list[or_idx].front_edge = NONE;
+        outrec_list[or_idx].back_edge = NONE;
     }
 }
 
@@ -901,10 +894,11 @@ pub fn extract_from_sel(e_idx: usize, active_arena: &mut [Active]) -> usize {
     if next != NONE {
         active_arena[next].prev_in_sel = active_arena[e_idx].prev_in_sel;
     }
-    if let Some(prev_idx) = active_arena[e_idx].prev_in_sel {
+    let prev_idx = active_arena[e_idx].prev_in_sel;
+    if prev_idx != NONE {
         active_arena[prev_idx].next_in_sel = next;
     }
-    active_arena[e_idx].prev_in_sel = None;
+    active_arena[e_idx].prev_in_sel = NONE;
     active_arena[e_idx].next_in_sel = NONE;
     next
 }
@@ -914,9 +908,9 @@ pub fn extract_from_sel(e_idx: usize, active_arena: &mut [Active]) -> usize {
 pub fn insert1_before2_in_sel(tmp_idx: usize, left_idx: usize, active_arena: &mut [Active]) {
     let prev = active_arena[left_idx].prev_in_sel;
     active_arena[tmp_idx].prev_in_sel = prev;
-    if let Some(prev_idx) = prev {
-        active_arena[prev_idx].next_in_sel = tmp_idx;
+    if prev != NONE {
+        active_arena[prev].next_in_sel = tmp_idx;
     }
     active_arena[tmp_idx].next_in_sel = left_idx;
-    active_arena[left_idx].prev_in_sel = Some(tmp_idx);
+    active_arena[left_idx].prev_in_sel = tmp_idx;
 }

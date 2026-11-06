@@ -76,17 +76,17 @@ fn test_outpt_new() {
     let op = OutPt::new(Point64::new(5, 10), 0);
     assert_eq!(op.pt, Point64::new(5, 10));
     assert_eq!(op.outrec, 0);
-    assert!(op.horz.is_none());
+    assert!(op.horz == NONE);
 }
 
 #[test]
 fn test_outrec_new() {
     let or = OutRec::new(42);
     assert_eq!(or.idx, 42);
-    assert!(or.owner.is_none());
-    assert!(or.front_edge.is_none());
-    assert!(or.back_edge.is_none());
-    assert!(or.pts.is_none());
+    assert!(or.owner == NONE);
+    assert!(or.front_edge == NONE);
+    assert!(or.back_edge == NONE);
+    assert!(or.pts == NONE);
     assert!(!or.is_open);
 }
 
@@ -96,8 +96,8 @@ fn test_active_new() {
     assert_eq!(a.wind_dx, 1);
     assert_eq!(a.wind_cnt, 0);
     assert_eq!(a.wind_cnt2, 0);
-    assert!(a.outrec.is_none());
-    assert!(a.prev_in_ael.is_none());
+    assert!(a.outrec == NONE);
+    assert!(a.prev_in_ael == NONE);
     assert!(a.next_in_ael == NONE);
     assert_eq!(a.join_with, JoinWith::NoJoin);
 }
@@ -125,24 +125,24 @@ fn test_intersect_node_new() {
 #[test]
 fn test_horz_segment_new() {
     let hs = HorzSegment::new();
-    assert!(hs.left_op.is_none());
-    assert!(hs.right_op.is_none());
+    assert!(hs.left_op == NONE);
+    assert!(hs.right_op == NONE);
     assert!(hs.left_to_right);
 
     let hs2 = HorzSegment::with_op(10);
-    assert_eq!(hs2.left_op, Some(10));
-    assert!(hs2.right_op.is_none());
+    assert_eq!(hs2.left_op, 10);
+    assert!(hs2.right_op == NONE);
 }
 
 #[test]
 fn test_horz_join_new() {
     let hj = HorzJoin::new();
-    assert!(hj.op1.is_none());
-    assert!(hj.op2.is_none());
+    assert!(hj.op1 == NONE);
+    assert!(hj.op2 == NONE);
 
     let hj2 = HorzJoin::with_ops(3, 7);
-    assert_eq!(hj2.op1, Some(3));
-    assert_eq!(hj2.op2, Some(7));
+    assert_eq!(hj2.op1, 3);
+    assert_eq!(hj2.op2, 7);
 }
 
 // ============================================================================
@@ -376,14 +376,14 @@ fn test_clipper_base_swap_outrecs() {
     let e1 = cb.new_active();
     let e2 = cb.new_active();
 
-    cb.active_arena[e1].outrec = Some(or1);
-    cb.active_arena[e2].outrec = Some(or2);
-    cb.outrec_list[or1].front_edge = Some(e1);
-    cb.outrec_list[or2].front_edge = Some(e2);
+    cb.active_arena[e1].outrec = or1;
+    cb.active_arena[e2].outrec = or2;
+    cb.outrec_list[or1].front_edge = e1;
+    cb.outrec_list[or2].front_edge = e2;
 
     cb.swap_outrecs(e1, e2);
-    assert_eq!(cb.active_arena[e1].outrec, Some(or2));
-    assert_eq!(cb.active_arena[e2].outrec, Some(or1));
+    assert_eq!(cb.active_arena[e1].outrec, or2);
+    assert_eq!(cb.active_arena[e2].outrec, or1);
 }
 
 // ============================================================================
@@ -927,10 +927,10 @@ fn test_top_x_bankers_rounding() {
         wind_dx: 1,
         wind_cnt: 0,
         wind_cnt2: 0,
-        outrec: None,
-        prev_in_ael: None,
+        outrec: NONE,
+        prev_in_ael: NONE,
         next_in_ael: NONE,
-        prev_in_sel: None,
+        prev_in_sel: NONE,
         next_in_sel: NONE,
         jump: NONE,
         vertex_top: 0,
