@@ -389,15 +389,15 @@ impl Clipper64 {
 
         let mut open_paths = Vec::new();
 
-        let mut i = 0;
-        while i < self.base.outrec_list.len() {
-            if self.base.outrec_list[i].pts == NONE {
+        let mut i: Idx = 0;
+        while i < self.base.outrec_list.len() as Idx {
+            if self.base.outrec_list[i as usize].pts == NONE {
                 i += 1;
                 continue;
             }
 
-            if self.base.outrec_list[i].is_open {
-                let op = self.base.outrec_list[i].pts;
+            if self.base.outrec_list[i as usize].is_open {
+                let op = self.base.outrec_list[i as usize].pts;
                 if let Some(path) = build_path64_from_outpt(
                     op,
                     self.base.reverse_solution,
@@ -408,8 +408,8 @@ impl Clipper64 {
                 }
             } else {
                 self.base.clean_collinear(i);
-                if self.base.outrec_list[i].pts != NONE {
-                    let op = self.base.outrec_list[i].pts;
+                if self.base.outrec_list[i as usize].pts != NONE {
+                    let op = self.base.outrec_list[i as usize].pts;
                     if let Some(path) = build_path64_from_outpt(
                         op,
                         self.base.reverse_solution,
@@ -437,15 +437,15 @@ impl Clipper64 {
             open_paths.reserve(self.base.outrec_list.len());
         }
 
-        let mut i = 0;
-        while i < self.base.outrec_list.len() {
-            if self.base.outrec_list[i].pts == NONE {
+        let mut i: Idx = 0;
+        while i < self.base.outrec_list.len() as Idx {
+            if self.base.outrec_list[i as usize].pts == NONE {
                 i += 1;
                 continue;
             }
 
-            if self.base.outrec_list[i].is_open {
-                let op = self.base.outrec_list[i].pts;
+            if self.base.outrec_list[i as usize].is_open {
+                let op = self.base.outrec_list[i as usize].pts;
                 if let Some(path) = build_path64_from_outpt(
                     op,
                     self.base.reverse_solution,
@@ -625,15 +625,15 @@ impl ClipperD {
 
         let mut open_paths = Vec::new();
 
-        let mut i = 0;
-        while i < self.base.outrec_list.len() {
-            if self.base.outrec_list[i].pts == NONE {
+        let mut i: Idx = 0;
+        while i < self.base.outrec_list.len() as Idx {
+            if self.base.outrec_list[i as usize].pts == NONE {
                 i += 1;
                 continue;
             }
 
-            if self.base.outrec_list[i].is_open {
-                let op = self.base.outrec_list[i].pts;
+            if self.base.outrec_list[i as usize].is_open {
+                let op = self.base.outrec_list[i as usize].pts;
                 if let Some(path) = build_path_d_from_outpt(
                     op,
                     self.base.reverse_solution,
@@ -645,8 +645,8 @@ impl ClipperD {
                 }
             } else {
                 self.base.clean_collinear(i);
-                if self.base.outrec_list[i].pts != NONE {
-                    let op = self.base.outrec_list[i].pts;
+                if self.base.outrec_list[i as usize].pts != NONE {
+                    let op = self.base.outrec_list[i as usize].pts;
                     if let Some(path) = build_path_d_from_outpt(
                         op,
                         self.base.reverse_solution,
@@ -680,15 +680,15 @@ impl ClipperD {
         // This matches the C++ approach where RecursiveCheckOwners works with Path64
         let mut polytree64 = PolyTree64::new();
 
-        let mut i = 0;
-        while i < self.base.outrec_list.len() {
-            if self.base.outrec_list[i].pts == NONE {
+        let mut i: Idx = 0;
+        while i < self.base.outrec_list.len() as Idx {
+            if self.base.outrec_list[i as usize].pts == NONE {
                 i += 1;
                 continue;
             }
 
-            if self.base.outrec_list[i].is_open {
-                let op = self.base.outrec_list[i].pts;
+            if self.base.outrec_list[i as usize].is_open {
+                let op = self.base.outrec_list[i as usize].pts;
                 if let Some(path) = build_path_d_from_outpt(
                     op,
                     self.base.reverse_solution,
