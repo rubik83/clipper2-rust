@@ -492,7 +492,7 @@ impl ClipperBase {
     pub fn pop_local_minima(&mut self, y: i64) -> Option<Idx> {
         if self.current_locmin_idx < self.minima_list.len() as Idx {
             let vertex_idx = self.minima_list[self.current_locmin_idx as usize].vertex;
-            if self.vertex_arena[vertex_idx as usize].pt.y == y {
+            if self.vertex(vertex_idx).pt.y == y {
                 let idx = self.current_locmin_idx;
                 self.current_locmin_idx += 1;
                 return Some(idx);
@@ -546,11 +546,31 @@ impl ClipperBase {
         Self::idx_mut(&mut self.active_arena, idx)
     }
 
+    #[inline]
+    pub fn vertex(&self, idx: Idx) -> &Vertex {
+        Self::idx(&self.vertex_arena, idx)
+    }
+
+    #[inline]
+    pub fn vertex_mut(&mut self, idx: Idx) -> &mut Vertex {
+        Self::idx_mut(&mut self.vertex_arena, idx)
+    }
+
+    #[inline]
+    pub fn outpt(&self, idx: Idx) -> &OutPt {
+        Self::idx(&self.outpt_arena, idx)
+    }
+
+    #[inline]
+    pub fn outpt_mut(&mut self, idx: Idx) -> &mut OutPt {
+        Self::idx_mut(&mut self.outpt_arena, idx)
+    }
+
     /// Add a local minimum
     /// Direct port from clipper.engine.cpp AddLocMin
     pub fn add_loc_min(&mut self, vert_idx: Idx, polytype: PathType, is_open: bool) {
         // Check that the vertex is a local minima
-        self.vertex_arena[vert_idx as usize].flags |= VertexFlags::LOCAL_MIN;
+        self.vertex_mut(vert_idx).flags |= VertexFlags::LOCAL_MIN;
         self.minima_list
             .push(LocalMinima::new(vert_idx, polytype, is_open));
     }
@@ -588,9 +608,8 @@ impl ClipperBase {
         // Link vertices into circular list
         for i in 0..vert_count {
             let abs_idx = first_vert_idx + i;
-            self.vertex_arena[abs_idx as usize].next = first_vert_idx + (i + 1) % vert_count;
-            self.vertex_arena[abs_idx as usize].prev =
-                first_vert_idx + (i + vert_count - 1) % vert_count;
+            self.vertex_mut(abs_idx).next = first_vert_idx + (i + 1) % vert_count;
+            self.vertex_mut(abs_idx).prev = first_vert_idx + (i + vert_count - 1) % vert_count;
         }
 
         // Record this vertex list
@@ -599,7 +618,7 @@ impl ClipperBase {
 
         if is_open {
             // For open paths, mark start and end
-            self.vertex_arena[first_vert_idx as usize].flags |= VertexFlags::OPEN_START;
+            self.vertex_mut(first_vert_idx).flags |= VertexFlags::OPEN_START;
             self.vertex_arena[(first_vert_idx + vert_count - 1) as usize].flags |=
                 VertexFlags::OPEN_END;
 
@@ -608,9 +627,7 @@ impl ClipperBase {
             let last = first_vert_idx + vert_count - 1;
 
             // Skip ascending from start
-            while i < last
-                && self.vertex_arena[i as usize].pt.y <= self.vertex_arena[(i + 1) as usize].pt.y
-            {
+            while i < last && self.vertex(i).pt.y <= self.vertex_arena[(i + 1) as usize].pt.y {
                 i += 1;
             }
             // We need to handle ascending/descending sequences and add local minima
@@ -641,8 +658,8 @@ impl ClipperBase {
         // Skip vertices where prev has same y
         let mut found_start = false;
         for i in first_vert_idx..end {
-            let prev = self.vertex_arena[i as usize].prev;
-            if self.vertex_arena[prev as usize].pt.y != self.vertex_arena[i as usize].pt.y {
+            let prev = self.vertex(i).prev;
+            if self.vertex(prev).pt.y != self.vertex(i).pt.y {
                 start = i;
                 found_start = true;
                 break;
@@ -653,19 +670,18 @@ impl ClipperBase {
         }
 
         // Determine initial direction
-        let prev = self.vertex_arena[start as usize].prev;
-        let mut going_up =
-            self.vertex_arena[prev as usize].pt.y > self.vertex_arena[start as usize].pt.y;
+        let prev = self.vertex(start).prev;
+        let mut going_up = self.vertex(prev).pt.y > self.vertex(start).pt.y;
 
         let mut curr = start;
         loop {
-            let next = self.vertex_arena[curr as usize].next;
-            let curr_pt = self.vertex_arena[curr as usize].pt;
-            let next_pt = self.vertex_arena[next as usize].pt;
+            let next = self.vertex(curr).next;
+            let curr_pt = self.vertex(curr).pt;
+            let next_pt = self.vertex(next).pt;
 
             if next_pt.y > curr_pt.y && going_up {
                 // Was going up, now going down => local max
-                self.vertex_arena[curr as usize].flags |= VertexFlags::LOCAL_MAX;
+                self.vertex_mut(curr).flags |= VertexFlags::LOCAL_MAX;
                 going_up = false;
             } else if next_pt.y < curr_pt.y && !going_up {
                 // Was going down, now going up => local min
@@ -696,7 +712,7 @@ impl ClipperBase {
         let last_vert_idx = first_vert_idx + vert_count - 1;
 
         // For open paths, the first and last vertices are potential local minima
-        let first_pt = self.vertex_arena[first_vert_idx as usize].pt;
+        let first_pt = self.vertex(first_vert_idx).pt;
         let second_pt = self.vertex_arena[(first_vert_idx + 1) as usize].pt;
 
         // The start is a local min if it goes up (in screen coords, y decreases)
@@ -708,12 +724,12 @@ impl ClipperBase {
             going_up = true;
         } else if first_pt.y < second_pt.y {
             // Going down - first is NOT a local min, it's a local max
-            self.vertex_arena[first_vert_idx as usize].flags |= VertexFlags::LOCAL_MAX;
+            self.vertex_mut(first_vert_idx).flags |= VertexFlags::LOCAL_MAX;
             going_up = false;
         } else {
             // Horizontal at start - need to keep scanning
             let mut i = first_vert_idx + 1;
-            while i < last_vert_idx && self.vertex_arena[i as usize].pt.y == first_pt.y {
+            while i < last_vert_idx && self.vertex(i).pt.y == first_pt.y {
                 i += 1;
             }
             if i >= last_vert_idx {
@@ -722,22 +738,22 @@ impl ClipperBase {
                 self.add_loc_min(first_vert_idx, polytype, true);
                 going_up = true;
             } else {
-                going_up = self.vertex_arena[i as usize].pt.y < first_pt.y;
+                going_up = self.vertex(i).pt.y < first_pt.y;
                 if going_up {
                     self.add_loc_min(first_vert_idx, polytype, true);
                 } else {
-                    self.vertex_arena[first_vert_idx as usize].flags |= VertexFlags::LOCAL_MAX;
+                    self.vertex_mut(first_vert_idx).flags |= VertexFlags::LOCAL_MAX;
                 }
             }
         }
 
         // Scan interior vertices
         for i in (first_vert_idx + 1)..last_vert_idx {
-            let curr_pt = self.vertex_arena[i as usize].pt;
+            let curr_pt = self.vertex(i).pt;
             let next_pt = self.vertex_arena[(i + 1) as usize].pt;
 
             if next_pt.y > curr_pt.y && going_up {
-                self.vertex_arena[i as usize].flags |= VertexFlags::LOCAL_MAX;
+                self.vertex_mut(i).flags |= VertexFlags::LOCAL_MAX;
                 going_up = false;
             } else if next_pt.y < curr_pt.y && !going_up {
                 going_up = true;
@@ -746,13 +762,13 @@ impl ClipperBase {
         }
 
         // Handle last vertex
-        let last_pt = self.vertex_arena[last_vert_idx as usize].pt;
+        let last_pt = self.vertex_mut(last_vert_idx).pt;
         let prev_pt = self.vertex_arena[(last_vert_idx - 1) as usize].pt;
         if !going_up {
             // Was descending - last vertex is a local min
             self.add_loc_min(last_vert_idx, polytype, true);
         } else if last_pt.y < prev_pt.y || (last_pt.y == prev_pt.y && going_up) {
-            self.vertex_arena[last_vert_idx as usize].flags |= VertexFlags::LOCAL_MAX;
+            self.vertex_mut(last_vert_idx).flags |= VertexFlags::LOCAL_MAX;
         }
     }
 
@@ -785,25 +801,25 @@ impl ClipperBase {
     /// Duplicate an OutPt, inserting after or before
     /// Direct port from clipper.engine.cpp DuplicateOp
     pub fn duplicate_op(&mut self, op_idx: Idx, insert_after: bool) -> Idx {
-        let pt = self.outpt_arena[op_idx as usize].pt;
-        let outrec = self.outpt_arena[op_idx as usize].outrec;
+        let pt = self.outpt(op_idx).pt;
+        let outrec = self.outpt(op_idx).outrec;
         let new_idx = self.outpt_arena.len() as Idx;
         let mut result = OutPt::new(pt, outrec);
 
         if insert_after {
-            let next = self.outpt_arena[op_idx as usize].next;
+            let next = self.outpt(op_idx).next;
             result.next = next;
             result.prev = op_idx;
             self.outpt_arena.push(result);
-            self.outpt_arena[next as usize].prev = new_idx;
-            self.outpt_arena[op_idx as usize].next = new_idx;
+            self.outpt_mut(next).prev = new_idx;
+            self.outpt_mut(op_idx).next = new_idx;
         } else {
-            let prev = self.outpt_arena[op_idx as usize].prev;
+            let prev = self.outpt(op_idx).prev;
             result.prev = prev;
             result.next = op_idx;
             self.outpt_arena.push(result);
-            self.outpt_arena[prev as usize].next = new_idx;
-            self.outpt_arena[op_idx as usize].prev = new_idx;
+            self.outpt_mut(prev).next = new_idx;
+            self.outpt_mut(op_idx).prev = new_idx;
         }
 
         new_idx
@@ -812,10 +828,10 @@ impl ClipperBase {
     /// Dispose (unlink) an OutPt, return the next
     /// Direct port from clipper.engine.cpp DisposeOutPt
     pub fn dispose_out_pt(&mut self, op_idx: Idx) -> Idx {
-        let result = self.outpt_arena[op_idx as usize].next;
-        let prev = self.outpt_arena[op_idx as usize].prev;
-        self.outpt_arena[prev as usize].next = result;
-        self.outpt_arena[result as usize].prev = prev;
+        let result = self.outpt(op_idx).next;
+        let prev = self.outpt(op_idx).prev;
+        self.outpt_mut(prev).next = result;
+        self.outpt_mut(result).prev = prev;
         // Note: we don't actually free the arena slot, just unlink
         result
     }
@@ -826,15 +842,15 @@ impl ClipperBase {
         let pts_idx = self.outrec_list[outrec_idx as usize].pts;
         if pts_idx != NONE {
             // Unlink the circular list (don't actually free, arena-based)
-            let prev = self.outpt_arena[pts_idx as usize].prev;
-            self.outpt_arena[prev as usize].next = NONE; // break the circle
-                                                         // Walk and mark as disposed
+            let prev = self.outpt(pts_idx).prev;
+            self.outpt_mut(prev).next = NONE; // break the circle
+                                              // Walk and mark as disposed
             let mut op = Some(pts_idx);
             while let Some(idx) = op {
-                if self.outpt_arena[idx as usize].next == NONE {
+                if self.outpt(idx).next == NONE {
                     break;
                 }
-                let next = self.outpt_arena[idx as usize].next;
+                let next = self.outpt(idx).next;
                 if next == NONE || next == idx {
                     break;
                 }
@@ -923,7 +939,7 @@ impl ClipperBase {
         // Match C++: check is_open, then just push to the list.
         // Do NOT check or set op.horz here - that is only done inside
         // convert_horz_segs_to_joins (via UpdateHorzSegment logic).
-        let or_idx = self.outpt_arena[op_idx as usize].outrec;
+        let or_idx = self.outpt(op_idx).outrec;
         if self.outrec_list[or_idx as usize].is_open {
             return;
         }
@@ -977,18 +993,18 @@ impl ClipperBase {
         if reverse {
             let mut op = op_start;
             loop {
-                result.push(self.outpt_arena[op as usize].pt);
-                op = self.outpt_arena[op as usize].prev;
+                result.push(self.outpt(op).pt);
+                op = self.outpt(op).prev;
                 if op == op_start {
                     break;
                 }
             }
         } else {
-            let op_next = self.outpt_arena[op_start as usize].next;
+            let op_next = self.outpt(op_start).next;
             let mut op = op_next;
             loop {
-                result.push(self.outpt_arena[op as usize].pt);
-                op = self.outpt_arena[op as usize].next;
+                result.push(self.outpt(op).pt);
+                op = self.outpt(op).next;
                 if op == op_next {
                     break;
                 }
@@ -1120,7 +1136,7 @@ impl ClipperBase {
         // prioritize subject over clip vertices by passing
         // subject vertices before clip vertices in the callback
         if self.get_poly_type_idx(e1_idx) == PathType::Subject {
-            let ip = &mut self.outpt_arena[ip_idx as usize].pt;
+            let ip = &mut Self::idx_mut(&mut self.outpt_arena, ip_idx).pt;
             if *ip == e1.bot {
                 ip.z = e1.bot.z;
             } else if *ip == e1.top {
@@ -1134,7 +1150,7 @@ impl ClipperBase {
             }
             self.z_callback.as_mut().unwrap()(&e1.bot, &e1.top, &e2.bot, &e2.top, ip);
         } else {
-            let ip = &mut self.outpt_arena[ip_idx as usize].pt;
+            let ip = &mut Self::idx_mut(&mut self.outpt_arena, ip_idx).pt;
             if *ip == e2.bot {
                 ip.z = e2.bot.z;
             } else if *ip == e2.top {
@@ -1414,13 +1430,13 @@ impl ClipperBase {
         let or_idx = self.active(e_idx).outrec;
         let to_front = self.is_front(e_idx);
         let op_front = self.outrec_list[or_idx as usize].pts;
-        let op_back = self.outpt_arena[op_front as usize].next;
+        let op_back = self.outpt(op_front).next;
 
         if to_front {
-            if pt == self.outpt_arena[op_front as usize].pt {
+            if pt == self.outpt(op_front).pt {
                 return op_front;
             }
-        } else if pt == self.outpt_arena[op_back as usize].pt {
+        } else if pt == self.outpt(op_back).pt {
             return op_back;
         }
 
@@ -1429,8 +1445,8 @@ impl ClipperBase {
         new_op.prev = op_front;
         new_op.next = op_back;
         self.outpt_arena.push(new_op);
-        self.outpt_arena[op_back as usize].prev = new_idx;
-        self.outpt_arena[op_front as usize].next = new_idx;
+        self.outpt_mut(op_back).prev = new_idx;
+        self.outpt_mut(op_front).next = new_idx;
 
         if to_front {
             self.outrec_list[or_idx as usize].pts = new_idx;
@@ -1581,14 +1597,14 @@ impl ClipperBase {
 
         let p1_st = self.outrec_list[or1 as usize].pts;
         let p2_st = self.outrec_list[or2 as usize].pts;
-        let p1_end = self.outpt_arena[p1_st as usize].next;
-        let p2_end = self.outpt_arena[p2_st as usize].next;
+        let p1_end = self.outpt(p1_st).next;
+        let p2_end = self.outpt(p2_st).next;
 
         if self.is_front(e1_idx) {
-            self.outpt_arena[p2_end as usize].prev = p1_st;
-            self.outpt_arena[p1_st as usize].next = p2_end;
-            self.outpt_arena[p2_st as usize].next = p1_end;
-            self.outpt_arena[p1_end as usize].prev = p2_st;
+            self.outpt_mut(p2_end).prev = p1_st;
+            self.outpt_mut(p1_st).next = p2_end;
+            self.outpt_mut(p2_st).next = p1_end;
+            self.outpt_mut(p1_end).prev = p2_st;
             self.outrec_list[or1 as usize].pts = p2_st;
             self.outrec_list[or1 as usize].front_edge = self.outrec_list[or2 as usize].front_edge;
             let fe = self.outrec_list[or1 as usize].front_edge;
@@ -1596,10 +1612,10 @@ impl ClipperBase {
                 self.active_mut(fe).outrec = or1;
             }
         } else {
-            self.outpt_arena[p1_end as usize].prev = p2_st;
-            self.outpt_arena[p2_st as usize].next = p1_end;
-            self.outpt_arena[p1_st as usize].next = p2_end;
-            self.outpt_arena[p2_end as usize].prev = p1_st;
+            self.outpt_mut(p1_end).prev = p2_st;
+            self.outpt_mut(p2_st).next = p1_end;
+            self.outpt_mut(p1_st).next = p2_end;
+            self.outpt_mut(p2_end).prev = p1_st;
             self.outrec_list[or1 as usize].back_edge = self.outrec_list[or2 as usize].back_edge;
             let be = self.outrec_list[or1 as usize].back_edge;
             if be != NONE {
@@ -1711,7 +1727,7 @@ impl ClipperBase {
     fn trim_horz(&mut self, e_idx: Idx) {
         let mut was_trimmed = false;
         let nv = self.next_vertex_idx(e_idx);
-        let mut pt = self.vertex_arena[nv as usize].pt;
+        let mut pt = self.vertex(nv).pt;
 
         while pt.y == self.active(e_idx).top.y {
             if self.preserve_collinear
@@ -1728,7 +1744,7 @@ impl ClipperBase {
                 break;
             }
             let nv2 = self.next_vertex_idx(e_idx);
-            pt = self.vertex_arena[nv2 as usize].pt;
+            pt = self.vertex(nv2).pt;
         }
 
         if was_trimmed {
@@ -2207,8 +2223,8 @@ impl ClipperBase {
     fn insert_local_minima_into_ael(&mut self, bot_y: i64) {
         while let Some(loc_min_idx) = self.pop_local_minima(bot_y) {
             let vert_idx = self.minima_list[loc_min_idx as usize].vertex;
-            let vert_flags = self.vertex_arena[vert_idx as usize].flags;
-            let vert_pt = self.vertex_arena[vert_idx as usize].pt;
+            let vert_flags = self.vertex(vert_idx).flags;
+            let vert_pt = self.vertex(vert_idx).pt;
 
             // Create left bound if not open start
             let left_bound_opt = if (vert_flags & VertexFlags::OPEN_START) != VertexFlags::EMPTY {
@@ -2219,7 +2235,7 @@ impl ClipperBase {
                 lb.bot = vert_pt;
                 lb.curr_x = vert_pt.x;
                 lb.wind_dx = -1;
-                lb.vertex_top = self.vertex_arena[vert_idx as usize].prev; // descending
+                lb.vertex_top = self.vertex(vert_idx).prev; // descending
                 lb.top = self.vertex_arena[lb.vertex_top as usize].pt;
                 lb.local_min = loc_min_idx;
                 set_dx(&mut lb);
@@ -2236,7 +2252,7 @@ impl ClipperBase {
                 rb.bot = vert_pt;
                 rb.curr_x = vert_pt.x;
                 rb.wind_dx = 1;
-                rb.vertex_top = self.vertex_arena[vert_idx as usize].next; // ascending
+                rb.vertex_top = self.vertex(vert_idx).next; // ascending
                 rb.top = self.vertex_arena[rb.vertex_top as usize].pt;
                 rb.local_min = loc_min_idx;
                 set_dx(&mut rb);
@@ -2382,7 +2398,7 @@ impl ClipperBase {
                     z: self.active(horz_idx).bot.z,
                 },
             );
-            let or = self.outpt_arena[op as usize].outrec;
+            let or = self.outpt(op).outrec;
             if !self.outrec_list[or as usize].is_open {
                 self.add_trial_horz_join(op);
             }
@@ -2437,7 +2453,7 @@ impl ClipperBase {
                         && !self.is_horizontal_idx(e_idx)
                     {
                         let nv_idx = self.next_vertex_idx(horz_idx);
-                        let nv_pt = self.vertex_arena[nv_idx as usize].pt;
+                        let nv_pt = self.vertex(nv_idx).pt;
 
                         if is_left_to_right {
                             if self.is_open_idx(e_idx)
@@ -2510,7 +2526,7 @@ impl ClipperBase {
             }
 
             let nv_idx = self.next_vertex_idx(horz_idx);
-            if self.vertex_arena[nv_idx as usize].pt.y != self.active(horz_idx).top.y {
+            if self.vertex(nv_idx).pt.y != self.active(horz_idx).top.y {
                 break;
             }
 
@@ -2829,10 +2845,10 @@ impl ClipperBase {
     /// Set horizontal segment heading forward
     #[allow(dead_code)]
     fn set_horz_seg_heading_forward(&mut self, hs_idx: Idx, op_p: Idx, op_n: Idx) -> bool {
-        if self.outpt_arena[op_p as usize].pt.x == self.outpt_arena[op_n as usize].pt.x {
+        if self.outpt(op_p).pt.x == self.outpt(op_n).pt.x {
             return false;
         }
-        if self.outpt_arena[op_p as usize].pt.x < self.outpt_arena[op_n as usize].pt.x {
+        if self.outpt(op_p).pt.x < self.outpt(op_n).pt.x {
             self.horz_seg_list[hs_idx as usize].left_op = op_p;
             self.horz_seg_list[hs_idx as usize].right_op = op_n;
             self.horz_seg_list[hs_idx as usize].left_to_right = true;
@@ -2854,63 +2870,51 @@ impl ClipperBase {
             if op == NONE {
                 continue;
             }
-            let or_idx = self.outpt_arena[op as usize].outrec;
+            let or_idx = self.outpt(op).outrec;
             let real_or = get_real_outrec(&self.outrec_list, or_idx);
             if real_or == NONE {
                 continue;
             }
             let real_or_idx = real_or;
             let has_edges = self.outrec_list[real_or_idx as usize].front_edge != NONE;
-            let curr_y = self.outpt_arena[op as usize].pt.y;
+            let curr_y = self.outpt(op).pt.y;
 
             let mut op_p = op;
             let mut op_n = op;
 
             if has_edges {
                 let op_a = self.outrec_list[real_or_idx as usize].pts;
-                let op_z = self.outpt_arena[op_a as usize].next;
+                let op_z = self.outpt(op_a).next;
                 while op_p != op_z
-                    && self.outpt_arena[(self.outpt_arena[op_p as usize].prev) as usize]
-                        .pt
-                        .y
-                        == curr_y
+                    && self.outpt_arena[(self.outpt(op_p).prev) as usize].pt.y == curr_y
                 {
-                    op_p = self.outpt_arena[op_p as usize].prev;
+                    op_p = self.outpt(op_p).prev;
                 }
                 while op_n != op_a
-                    && self.outpt_arena[(self.outpt_arena[op_n as usize].next) as usize]
-                        .pt
-                        .y
-                        == curr_y
+                    && self.outpt_arena[(self.outpt(op_n).next) as usize].pt.y == curr_y
                 {
-                    op_n = self.outpt_arena[op_n as usize].next;
+                    op_n = self.outpt(op_n).next;
                 }
             } else {
-                while self.outpt_arena[op_p as usize].prev != op_n
-                    && self.outpt_arena[(self.outpt_arena[op_p as usize].prev) as usize]
-                        .pt
-                        .y
-                        == curr_y
+                while self.outpt(op_p).prev != op_n
+                    && self.outpt_arena[(self.outpt(op_p).prev) as usize].pt.y == curr_y
                 {
-                    op_p = self.outpt_arena[op_p as usize].prev;
+                    op_p = self.outpt(op_p).prev;
                 }
-                while self.outpt_arena[op_n as usize].next != op_p
-                    && self.outpt_arena[(self.outpt_arena[op_n as usize].next) as usize]
-                        .pt
-                        .y
-                        == curr_y
+                while self.outpt(op_n).next != op_p
+                    && self.outpt_arena[(self.outpt(op_n).next) as usize].pt.y == curr_y
                 {
-                    op_n = self.outpt_arena[op_n as usize].next;
+                    op_n = self.outpt(op_n).next;
                 }
             }
 
-            if self.outpt_arena[op_p as usize].pt.x == self.outpt_arena[op_n as usize].pt.x {
+            if self.outpt(op_p).pt.x == self.outpt(op_n).pt.x {
                 self.horz_seg_list[i as usize].right_op = NONE;
                 continue;
             }
 
             // Set heading
-            if self.outpt_arena[op_p as usize].pt.x < self.outpt_arena[op_n as usize].pt.x {
+            if self.outpt(op_p).pt.x < self.outpt(op_n).pt.x {
                 self.horz_seg_list[i as usize].left_op = op_p;
                 self.horz_seg_list[i as usize].right_op = op_n;
                 self.horz_seg_list[i as usize].left_to_right = true;
@@ -2922,12 +2926,12 @@ impl ClipperBase {
 
             // Check if left_op already has a horz
             let left_op = self.horz_seg_list[i as usize].left_op;
-            if self.outpt_arena[left_op as usize].horz != NONE {
+            if self.outpt(left_op).horz != NONE {
                 self.horz_seg_list[i as usize].right_op = NONE;
                 continue;
             }
 
-            self.outpt_arena[left_op as usize].horz = i;
+            self.outpt_mut(left_op).horz = i;
             valid_count += 1;
         }
 
@@ -2997,29 +3001,18 @@ impl ClipperBase {
                 if hs1_ltr {
                     // C++ modifies hs1->left_op persistently
                     let mut lo1 = self.horz_seg_list[i as usize].left_op;
-                    while self.outpt_arena[(self.outpt_arena[lo1 as usize].next) as usize]
-                        .pt
-                        .y
-                        == curr_y
-                        && self.outpt_arena[(self.outpt_arena[lo1 as usize].next) as usize]
-                            .pt
-                            .x
-                            <= hs2_left_x
+                    while self.outpt_arena[(self.outpt(lo1).next) as usize].pt.y == curr_y
+                        && self.outpt_arena[(self.outpt(lo1).next) as usize].pt.x <= hs2_left_x
                     {
-                        lo1 = self.outpt_arena[lo1 as usize].next;
+                        lo1 = self.outpt(lo1).next;
                     }
                     self.horz_seg_list[i as usize].left_op = lo1;
                     let mut lo2 = self.horz_seg_list[j as usize].left_op;
-                    while self.outpt_arena[(self.outpt_arena[lo2 as usize].prev) as usize]
-                        .pt
-                        .y
-                        == curr_y
-                        && self.outpt_arena[(self.outpt_arena[lo2 as usize].prev) as usize]
-                            .pt
-                            .x
-                            <= self.outpt_arena[lo1 as usize].pt.x
+                    while self.outpt_arena[(self.outpt(lo2).prev) as usize].pt.y == curr_y
+                        && self.outpt_arena[(self.outpt(lo2).prev) as usize].pt.x
+                            <= self.outpt(lo1).pt.x
                     {
-                        lo2 = self.outpt_arena[lo2 as usize].prev;
+                        lo2 = self.outpt(lo2).prev;
                     }
                     self.horz_seg_list[j as usize].left_op = lo2;
                     let dup1 = self.duplicate_op(lo1, true);
@@ -3028,29 +3021,18 @@ impl ClipperBase {
                 } else {
                     // C++ modifies hs1->left_op persistently
                     let mut lo1 = self.horz_seg_list[i as usize].left_op;
-                    while self.outpt_arena[(self.outpt_arena[lo1 as usize].prev) as usize]
-                        .pt
-                        .y
-                        == curr_y
-                        && self.outpt_arena[(self.outpt_arena[lo1 as usize].prev) as usize]
-                            .pt
-                            .x
-                            <= hs2_left_x
+                    while self.outpt_arena[(self.outpt(lo1).prev) as usize].pt.y == curr_y
+                        && self.outpt_arena[(self.outpt(lo1).prev) as usize].pt.x <= hs2_left_x
                     {
-                        lo1 = self.outpt_arena[lo1 as usize].prev;
+                        lo1 = self.outpt(lo1).prev;
                     }
                     self.horz_seg_list[i as usize].left_op = lo1;
                     let mut lo2 = self.horz_seg_list[j as usize].left_op;
-                    while self.outpt_arena[(self.outpt_arena[lo2 as usize].next) as usize]
-                        .pt
-                        .y
-                        == curr_y
-                        && self.outpt_arena[(self.outpt_arena[lo2 as usize].next) as usize]
-                            .pt
-                            .x
-                            <= self.outpt_arena[lo1 as usize].pt.x
+                    while self.outpt_arena[(self.outpt(lo2).next) as usize].pt.y == curr_y
+                        && self.outpt_arena[(self.outpt(lo2).next) as usize].pt.x
+                            <= self.outpt(lo1).pt.x
                     {
-                        lo2 = self.outpt_arena[lo2 as usize].next;
+                        lo2 = self.outpt(lo2).next;
                     }
                     self.horz_seg_list[j as usize].left_op = lo2;
                     let dup1 = self.duplicate_op(lo2, true);
@@ -3071,19 +3053,19 @@ impl ClipperBase {
                 continue;
             }
 
-            let or1 = get_real_outrec(&self.outrec_list, self.outpt_arena[op1 as usize].outrec);
-            let or2 = get_real_outrec(&self.outrec_list, self.outpt_arena[op2 as usize].outrec);
+            let or1 = get_real_outrec(&self.outrec_list, self.outpt(op1).outrec);
+            let or2 = get_real_outrec(&self.outrec_list, self.outpt(op2).outrec);
             if or1 == NONE || or2 == NONE {
                 continue;
             }
             let or2_orig = or2;
 
-            let op1b = self.outpt_arena[op1 as usize].next;
-            let op2b = self.outpt_arena[op2 as usize].prev;
-            self.outpt_arena[op1 as usize].next = op2;
-            self.outpt_arena[op2 as usize].prev = op1;
-            self.outpt_arena[op1b as usize].prev = op2b;
-            self.outpt_arena[op2b as usize].next = op1b;
+            let op1b = self.outpt(op1).next;
+            let op2b = self.outpt(op2).prev;
+            self.outpt_mut(op1).next = op2;
+            self.outpt_mut(op2).prev = op1;
+            self.outpt_mut(op1b).prev = op2b;
+            self.outpt_mut(op2b).next = op1b;
 
             if or1 == or2_orig {
                 // 'join' is really a split
@@ -3094,7 +3076,7 @@ impl ClipperBase {
                 if self.outpt_arena[(self.outrec_list[or1 as usize].pts) as usize].outrec == or2_new
                 {
                     self.outrec_list[or1 as usize].pts = op1;
-                    self.outpt_arena[op1 as usize].outrec = or1;
+                    self.outpt_mut(op1).outrec = or1;
                 }
 
                 if self.using_polytree {
@@ -3159,11 +3141,11 @@ impl ClipperBase {
         let mut start_op = self.outrec_list[or_idx as usize].pts;
         let mut op2 = start_op;
         loop {
-            let prev = self.outpt_arena[op2 as usize].prev;
-            let next = self.outpt_arena[op2 as usize].next;
-            let prev_pt = self.outpt_arena[prev as usize].pt;
-            let op2_pt = self.outpt_arena[op2 as usize].pt;
-            let next_pt = self.outpt_arena[next as usize].pt;
+            let prev = self.outpt(op2).prev;
+            let next = self.outpt(op2).next;
+            let prev_pt = self.outpt(prev).pt;
+            let op2_pt = self.outpt(op2).pt;
+            let next_pt = self.outpt(next).pt;
 
             if is_collinear(prev_pt, op2_pt, next_pt)
                 && (op2_pt == prev_pt
@@ -3198,62 +3180,60 @@ impl ClipperBase {
             return;
         }
 
-        let prev = self.outpt_arena[start_op as usize].prev;
-        let next = self.outpt_arena[start_op as usize].next;
-        if prev == self.outpt_arena[next as usize].next {
+        let prev = self.outpt(start_op).prev;
+        let next = self.outpt(start_op).next;
+        if prev == self.outpt(next).next {
             return; // triangles can't self-intersect
         }
 
         let mut op2 = start_op;
         loop {
-            let prev = self.outpt_arena[op2 as usize].prev;
-            let next = self.outpt_arena[op2 as usize].next;
-            let next_next = self.outpt_arena[next as usize].next;
+            let prev = self.outpt(op2).prev;
+            let next = self.outpt(op2).next;
+            let next_next = self.outpt(next).next;
 
             if segments_intersect(
-                self.outpt_arena[prev as usize].pt,
-                self.outpt_arena[op2 as usize].pt,
-                self.outpt_arena[next as usize].pt,
-                self.outpt_arena[next_next as usize].pt,
+                self.outpt(prev).pt,
+                self.outpt(op2).pt,
+                self.outpt(next).pt,
+                self.outpt(next_next).pt,
                 false,
             ) {
-                let next_next_next = self.outpt_arena[next_next as usize].next;
+                let next_next_next = self.outpt(next_next).next;
                 if segments_intersect(
-                    self.outpt_arena[prev as usize].pt,
-                    self.outpt_arena[op2 as usize].pt,
-                    self.outpt_arena[next_next as usize].pt,
-                    self.outpt_arena[next_next_next as usize].pt,
+                    self.outpt(prev).pt,
+                    self.outpt(op2).pt,
+                    self.outpt(next_next).pt,
+                    self.outpt(next_next_next).pt,
                     false,
                 ) {
                     // Adjacent intersections (micro self-intersection)
                     op2 = self.duplicate_op(op2, false);
-                    let nnext =
-                        self.outpt_arena[(self.outpt_arena[op2 as usize].next) as usize].next;
-                    let nnn = self.outpt_arena[nnext as usize].next;
-                    self.outpt_arena[op2 as usize].pt = self.outpt_arena[nnn as usize].pt;
-                    op2 = self.outpt_arena[op2 as usize].next;
+                    let nnext = self.outpt_arena[(self.outpt(op2).next) as usize].next;
+                    let nnn = self.outpt(nnext).next;
+                    self.outpt_mut(op2).pt = self.outpt(nnn).pt;
+                    op2 = self.outpt(op2).next;
                 } else {
                     if op2 == self.outrec_list[outrec_idx as usize].pts
                         || next == self.outrec_list[outrec_idx as usize].pts
                     {
                         let pts = self.outrec_list[outrec_idx as usize].pts;
-                        self.outrec_list[outrec_idx as usize].pts =
-                            self.outpt_arena[pts as usize].prev;
+                        self.outrec_list[outrec_idx as usize].pts = self.outpt(pts).prev;
                     }
                     self.do_split_op(outrec_idx, op2);
                     if self.outrec_list[outrec_idx as usize].pts == NONE {
                         break;
                     }
                     op2 = self.outrec_list[outrec_idx as usize].pts;
-                    let prev = self.outpt_arena[op2 as usize].prev;
-                    let next = self.outpt_arena[op2 as usize].next;
-                    if prev == self.outpt_arena[next as usize].next {
+                    let prev = self.outpt(op2).prev;
+                    let next = self.outpt(op2).next;
+                    if prev == self.outpt(next).next {
                         break;
                     }
                     continue;
                 }
             } else {
-                op2 = self.outpt_arena[op2 as usize].next;
+                op2 = self.outpt(op2).next;
             }
             if op2 == start_op
                 || (self.outrec_list[outrec_idx as usize].pts != NONE
@@ -3267,17 +3247,17 @@ impl ClipperBase {
     /// Do split operation on self-intersecting polygon
     /// Direct port from clipper.engine.cpp DoSplitOp (line 1562)
     fn do_split_op(&mut self, outrec_idx: Idx, split_op: Idx) {
-        let prev_op = self.outpt_arena[split_op as usize].prev;
-        let next_op = self.outpt_arena[split_op as usize].next;
-        let next_next_op = self.outpt_arena[next_op as usize].next;
+        let prev_op = self.outpt(split_op).prev;
+        let next_op = self.outpt(split_op).next;
+        let next_next_op = self.outpt(next_op).next;
         self.outrec_list[outrec_idx as usize].pts = prev_op;
 
-        let mut ip = self.outpt_arena[prev_op as usize].pt;
+        let mut ip = self.outpt(prev_op).pt;
         get_segment_intersect_pt(
-            self.outpt_arena[prev_op as usize].pt,
-            self.outpt_arena[split_op as usize].pt,
-            self.outpt_arena[next_op as usize].pt,
-            self.outpt_arena[next_next_op as usize].pt,
+            self.outpt(prev_op).pt,
+            self.outpt(split_op).pt,
+            self.outpt(next_op).pt,
+            self.outpt(next_next_op).pt,
             &mut ip,
         );
 
@@ -3300,40 +3280,34 @@ impl ClipperBase {
             return;
         }
 
-        let area2 = area_triangle(
-            ip,
-            self.outpt_arena[split_op as usize].pt,
-            self.outpt_arena[next_op as usize].pt,
-        );
+        let area2 = area_triangle(ip, self.outpt(split_op).pt, self.outpt(next_op).pt);
         let abs_area2 = area2.abs();
 
         // De-link split_op and next_op, inserting intersection point
-        if ip == self.outpt_arena[prev_op as usize].pt
-            || ip == self.outpt_arena[next_next_op as usize].pt
-        {
-            self.outpt_arena[next_next_op as usize].prev = prev_op;
-            self.outpt_arena[prev_op as usize].next = next_next_op;
+        if ip == self.outpt(prev_op).pt || ip == self.outpt(next_next_op).pt {
+            self.outpt_mut(next_next_op).prev = prev_op;
+            self.outpt_mut(prev_op).next = next_next_op;
         } else {
-            let new_op2 = self.new_out_pt(ip, self.outpt_arena[prev_op as usize].outrec);
-            self.outpt_arena[new_op2 as usize].prev = prev_op;
-            self.outpt_arena[new_op2 as usize].next = next_next_op;
-            self.outpt_arena[next_next_op as usize].prev = new_op2;
-            self.outpt_arena[prev_op as usize].next = new_op2;
+            let new_op2 = self.new_out_pt(ip, self.outpt(prev_op).outrec);
+            self.outpt_mut(new_op2).prev = prev_op;
+            self.outpt_mut(new_op2).next = next_next_op;
+            self.outpt_mut(next_next_op).prev = new_op2;
+            self.outpt_mut(prev_op).next = new_op2;
         }
 
         if abs_area2 >= 1.0 && (abs_area2 > abs_area1 || (area2 > 0.0) == (area1 > 0.0)) {
             let new_or = self.new_out_rec();
             self.outrec_list[new_or as usize].owner = self.outrec_list[outrec_idx as usize].owner;
 
-            self.outpt_arena[split_op as usize].outrec = new_or;
-            self.outpt_arena[next_op as usize].outrec = new_or;
+            self.outpt_mut(split_op).outrec = new_or;
+            self.outpt_mut(next_op).outrec = new_or;
 
             let new_op = self.new_out_pt(ip, new_or);
-            self.outpt_arena[new_op as usize].prev = next_op;
-            self.outpt_arena[new_op as usize].next = split_op;
+            self.outpt_mut(new_op).prev = next_op;
+            self.outpt_mut(new_op).next = split_op;
             self.outrec_list[new_or as usize].pts = new_op;
-            self.outpt_arena[split_op as usize].prev = new_op;
-            self.outpt_arena[next_op as usize].next = new_op;
+            self.outpt_mut(split_op).prev = new_op;
+            self.outpt_mut(next_op).next = new_op;
 
             if self.using_polytree {
                 if path2_contains_path1_outpt(prev_op, new_op, &self.outpt_arena) {
