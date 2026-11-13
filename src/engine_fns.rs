@@ -899,18 +899,11 @@ pub fn update_outrec_owner(outrec_idx: Idx, outrec_list: &[OutRec], outpt_arena:
 /// Move splits from one OutRec to another
 /// Direct port from clipper.engine.cpp MoveSplits (line 2269)
 pub fn move_splits(outrec_list: &mut [OutRec], from_or: Idx, to_or: Idx) {
-    let from_splits = outrec_list[from_or as usize]
-        .splits
-        .take()
-        .unwrap_or_default();
-    if outrec_list[to_or as usize].splits.is_none() {
-        outrec_list[to_or as usize].splits = Some(Vec::new());
-    }
-    if let Some(ref mut to_splits) = outrec_list[to_or as usize].splits {
-        for s in &from_splits {
-            if *s != to_or {
-                to_splits.push(*s);
-            }
+    let from_splits = std::mem::take(&mut outrec_list[from_or as usize].splits);
+    let to_splits = &mut outrec_list[to_or as usize].splits;
+    for s in from_splits {
+        if s != to_or {
+            to_splits.push(s);
         }
     }
 }

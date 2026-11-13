@@ -145,13 +145,13 @@ impl OutPt {
 #[derive(Debug, Clone)]
 pub struct OutRec {
     pub idx: Idx,
-    pub owner: Idx,               // index into outrec list
-    pub front_edge: Idx,          // index into active arena
-    pub back_edge: Idx,           // index into active arena
-    pub pts: Idx,                 // index into outpt arena
-    pub polypath: Idx,            // index into polypath list
-    pub splits: Option<Vec<Idx>>, // indices of split outrecs
-    pub recursive_split: Idx,     // index into outrec list
+    pub owner: Idx,           // index into outrec list
+    pub front_edge: Idx,      // index into active arena
+    pub back_edge: Idx,       // index into active arena
+    pub pts: Idx,             // index into outpt arena
+    pub polypath: Idx,        // index into polypath list
+    pub splits: Vec<Idx>,     // indices of split outrecs
+    pub recursive_split: Idx, // index into outrec list
     pub bounds: Rect64,
     pub path: Path64,
     pub is_open: bool,
@@ -166,7 +166,7 @@ impl OutRec {
             back_edge: NONE,
             pts: NONE,
             polypath: NONE,
-            splits: None,
+            splits: vec![],
             recursive_split: NONE,
             bounds: Rect64::new(0, 0, 0, 0),
             path: Path64::new(),
@@ -3143,15 +3143,7 @@ impl ClipperBase {
                         self.outrec_list[or2_new as usize].owner =
                             self.outrec_list[or1 as usize].owner;
                     }
-
-                    if self.outrec_list[or1 as usize].splits.is_none() {
-                        self.outrec_list[or1 as usize].splits = Some(Vec::new());
-                    }
-                    self.outrec_list[or1 as usize]
-                        .splits
-                        .as_mut()
-                        .unwrap()
-                        .push(or2_new);
+                    self.outrec_list[or1 as usize].splits.push(or2_new);
                 } else {
                     self.outrec_list[or2_new as usize].owner = or1;
                 }
@@ -3160,7 +3152,7 @@ impl ClipperBase {
                 self.outrec_list[or2_orig as usize].pts = NONE;
                 if self.using_polytree {
                     set_owner(&mut self.outrec_list, or2_orig, or1);
-                    if self.outrec_list[or2_orig as usize].splits.is_some() {
+                    if !self.outrec_list[or2_orig as usize].splits.is_empty() {
                         move_splits(&mut self.outrec_list, or2_orig, or1);
                     }
                 } else {
@@ -3368,16 +3360,9 @@ impl ClipperBase {
 
             if self.using_polytree {
                 if path2_contains_path1_outpt(prev_op, new_op, &self.outpt_arena) {
-                    self.outrec_list[new_or as usize].splits = Some(vec![outrec_idx]);
+                    self.outrec_list[new_or as usize].splits = vec![outrec_idx];
                 } else {
-                    if self.outrec_list[outrec_idx as usize].splits.is_none() {
-                        self.outrec_list[outrec_idx as usize].splits = Some(Vec::new());
-                    }
-                    self.outrec_list[outrec_idx as usize]
-                        .splits
-                        .as_mut()
-                        .unwrap()
-                        .push(new_or);
+                    self.outrec_list[outrec_idx as usize].splits.push(new_or);
                 }
             }
         }
@@ -3421,10 +3406,9 @@ impl ClipperBase {
     fn check_split_owner(&mut self, outrec_idx: Idx, splits: &[Idx]) -> bool {
         for &split_idx in splits {
             if self.outrec_list[split_idx as usize].pts == NONE {
-                if let Some(ref sub_splits) = self.outrec_list[split_idx as usize].splits.clone() {
-                    if self.check_split_owner(outrec_idx, sub_splits) {
-                        return true;
-                    }
+                let sub_splits = self.outrec_list[split_idx as usize].splits.clone();
+                if !sub_splits.is_empty() && self.check_split_owner(outrec_idx, &sub_splits) {
+                    return true;
                 }
             }
             let split = get_real_outrec(&self.outrec_list, split_idx);
@@ -3435,11 +3419,9 @@ impl ClipperBase {
                 continue;
             }
             self.outrec_list[split as usize].recursive_split = outrec_idx;
-
-            if let Some(ref sub_splits) = self.outrec_list[split as usize].splits.clone() {
-                if self.check_split_owner(outrec_idx, sub_splits) {
-                    return true;
-                }
+            let sub_splits = self.outrec_list[split as usize].splits.clone();
+            if !&sub_splits.is_empty() && self.check_split_owner(outrec_idx, &sub_splits) {
+                return true;
             }
 
             if !self.check_bounds(split) {
@@ -3481,10 +3463,9 @@ impl ClipperBase {
 
         let mut owner = self.outrec_list[outrec_idx as usize].owner;
         while owner != NONE {
-            if let Some(ref splits) = self.outrec_list[owner as usize].splits.clone() {
-                if self.check_split_owner(outrec_idx, splits) {
-                    break;
-                }
+            let splits = self.outrec_list[owner as usize].splits.clone();
+            if !splits.is_empty() && self.check_split_owner(outrec_idx, &splits) {
+                break;
             }
             if self.outrec_list[owner as usize].pts != NONE && self.check_bounds(owner) {
                 let or_bounds = self.outrec_list[outrec_idx as usize].bounds;
