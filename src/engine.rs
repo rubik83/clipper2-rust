@@ -566,6 +566,16 @@ impl ClipperBase {
         Self::idx_mut(&mut self.outpt_arena, idx)
     }
 
+    #[inline]
+    pub fn outrec(&self, idx: Idx) -> &OutRec {
+        Self::idx(&self.outrec_list, idx)
+    }
+
+    #[inline]
+    pub fn outrec_mut(&mut self, idx: Idx) -> &mut OutRec {
+        Self::idx_mut(&mut self.outrec_list, idx)
+    }
+
     /// Add a local minimum
     /// Direct port from clipper.engine.cpp AddLocMin
     pub fn add_loc_min(&mut self, vert_idx: Idx, polytype: PathType, is_open: bool) {
@@ -838,7 +848,7 @@ impl ClipperBase {
     /// Dispose all OutPts in a circular list, setting outrec.pts to None
     /// Direct port from clipper.engine.cpp DisposeOutPts
     pub fn dispose_out_pts(&mut self, outrec_idx: Idx) {
-        let pts_idx = self.outrec_list[outrec_idx as usize].pts;
+        let pts_idx = self.outrec(outrec_idx).pts;
         if pts_idx != NONE {
             // Unlink the circular list (don't actually free, arena-based)
             let prev = self.outpt(pts_idx).prev;
@@ -856,15 +866,15 @@ impl ClipperBase {
                 op = Some(next);
             }
         }
-        self.outrec_list[outrec_idx as usize].pts = NONE;
+        self.outrec_mut(outrec_idx).pts = NONE;
     }
 
     /// Set the front and back edges of an OutRec
     /// Direct port from clipper.engine.cpp SetSides
     #[inline]
     pub fn set_sides(&mut self, outrec_idx: Idx, start_edge: Idx, end_edge: Idx) {
-        self.outrec_list[outrec_idx as usize].front_edge = start_edge;
-        self.outrec_list[outrec_idx as usize].back_edge = end_edge;
+        self.outrec_mut(outrec_idx).front_edge = start_edge;
+        self.outrec_mut(outrec_idx).back_edge = end_edge;
     }
 
     /// Swap OutRecs between two active edges
@@ -875,27 +885,27 @@ impl ClipperBase {
 
         if or1_idx == or2_idx {
             if or1_idx != NONE {
-                let fe = self.outrec_list[or1_idx as usize].front_edge;
-                let be = self.outrec_list[or1_idx as usize].back_edge;
-                self.outrec_list[or1_idx as usize].front_edge = be;
-                self.outrec_list[or1_idx as usize].back_edge = fe;
+                let fe = self.outrec(or1_idx).front_edge;
+                let be = self.outrec(or1_idx).back_edge;
+                self.outrec_mut(or1_idx).front_edge = be;
+                self.outrec_mut(or1_idx).back_edge = fe;
             }
             return;
         }
 
         if or1_idx != NONE {
-            if self.outrec_list[or1_idx as usize].front_edge == e1_idx {
-                self.outrec_list[or1_idx as usize].front_edge = e2_idx;
+            if self.outrec_mut(or1_idx).front_edge == e1_idx {
+                self.outrec_mut(or1_idx).front_edge = e2_idx;
             } else {
-                self.outrec_list[or1_idx as usize].back_edge = e2_idx;
+                self.outrec_mut(or1_idx).back_edge = e2_idx;
             }
         }
 
         if or2_idx != NONE {
-            if self.outrec_list[or2_idx as usize].front_edge == e2_idx {
-                self.outrec_list[or2_idx as usize].front_edge = e1_idx;
+            if self.outrec_mut(or2_idx).front_edge == e2_idx {
+                self.outrec_mut(or2_idx).front_edge = e1_idx;
             } else {
-                self.outrec_list[or2_idx as usize].back_edge = e1_idx;
+                self.outrec_mut(or2_idx).back_edge = e1_idx;
             }
         }
 
@@ -909,7 +919,7 @@ impl ClipperBase {
     pub fn is_front(&self, e_idx: Idx) -> bool {
         let or_idx = self.active(e_idx).outrec;
         if or_idx != NONE {
-            self.outrec_list[or_idx as usize].front_edge == e_idx
+            self.outrec(or_idx).front_edge == e_idx
         } else {
             false
         }
@@ -939,7 +949,7 @@ impl ClipperBase {
         // Do NOT check or set op.horz here - that is only done inside
         // convert_horz_segs_to_joins (via UpdateHorzSegment logic).
         let or_idx = self.outpt(op_idx).outrec;
-        if self.outrec_list[or_idx as usize].is_open {
+        if self.outrec(or_idx).is_open {
             return;
         }
         self.horz_seg_list.push(HorzSegment::with_op(op_idx));
@@ -1171,7 +1181,7 @@ impl ClipperBase {
         self.intersect_nodes.clear();
         // Dispose all output
         for i in 0..self.outrec_list.len() as Idx {
-            self.outrec_list[i as usize].pts = NONE;
+            self.outrec_mut(i).pts = NONE;
         }
         self.outpt_arena.clear();
         self.outrec_list.clear();
@@ -1426,7 +1436,7 @@ impl ClipperBase {
     fn add_out_pt(&mut self, e_idx: Idx, pt: Point64) -> Idx {
         let or_idx = self.active(e_idx).outrec;
         let to_front = self.is_front(e_idx);
-        let op_front = self.outrec_list[or_idx as usize].pts;
+        let op_front = self.outrec(or_idx).pts;
         let op_back = self.outpt(op_front).next;
 
         if to_front {
@@ -1446,7 +1456,7 @@ impl ClipperBase {
         self.outpt_mut(op_front).next = new_idx;
 
         if to_front {
-            self.outrec_list[or_idx as usize].pts = new_idx;
+            self.outrec_mut(or_idx).pts = new_idx;
         }
         new_idx
     }
@@ -1455,20 +1465,20 @@ impl ClipperBase {
     /// Direct port from clipper.engine.cpp StartOpenPath (line 1696)
     fn start_open_path(&mut self, e_idx: Idx, pt: Point64) -> Idx {
         let outrec_idx = self.new_out_rec();
-        self.outrec_list[outrec_idx as usize].is_open = true;
+        self.outrec_mut(outrec_idx).is_open = true;
 
         if self.active(e_idx).wind_dx > 0 {
-            self.outrec_list[outrec_idx as usize].front_edge = e_idx;
-            self.outrec_list[outrec_idx as usize].back_edge = NONE;
+            self.outrec_mut(outrec_idx).front_edge = e_idx;
+            self.outrec_mut(outrec_idx).back_edge = NONE;
         } else {
-            self.outrec_list[outrec_idx as usize].front_edge = NONE;
-            self.outrec_list[outrec_idx as usize].back_edge = e_idx;
+            self.outrec_mut(outrec_idx).front_edge = NONE;
+            self.outrec_mut(outrec_idx).back_edge = e_idx;
         }
 
         self.active_mut(e_idx).outrec = outrec_idx;
 
         let op_idx = self.new_out_pt(pt, outrec_idx);
-        self.outrec_list[outrec_idx as usize].pts = op_idx;
+        self.outrec_mut(outrec_idx).pts = op_idx;
         op_idx
     }
 
@@ -1480,8 +1490,8 @@ impl ClipperBase {
         self.active_mut(e2_idx).outrec = outrec_idx;
 
         if self.is_open_idx(e1_idx) {
-            self.outrec_list[outrec_idx as usize].owner = NONE;
-            self.outrec_list[outrec_idx as usize].is_open = true;
+            self.outrec_mut(outrec_idx).owner = NONE;
+            self.outrec_mut(outrec_idx).is_open = true;
             if self.active(e1_idx).wind_dx > 0 {
                 self.set_sides(outrec_idx, e1_idx, e2_idx);
             } else {
@@ -1504,7 +1514,7 @@ impl ClipperBase {
                     self.set_sides(outrec_idx, e1_idx, e2_idx);
                 }
             } else {
-                self.outrec_list[outrec_idx as usize].owner = NONE;
+                self.outrec_mut(outrec_idx).owner = NONE;
                 if is_new {
                     self.set_sides(outrec_idx, e1_idx, e2_idx);
                 } else {
@@ -1514,7 +1524,7 @@ impl ClipperBase {
         }
 
         let op_idx = self.new_out_pt(pt, outrec_idx);
-        self.outrec_list[outrec_idx as usize].pts = op_idx;
+        self.outrec_mut(outrec_idx).pts = op_idx;
         op_idx
     }
 
@@ -1531,10 +1541,16 @@ impl ClipperBase {
         if self.is_front(e1_idx) == self.is_front(e2_idx) {
             if self.is_open_end_idx(e1_idx) {
                 let or_idx = self.active(e1_idx).outrec;
-                swap_front_back_sides(&mut self.outrec_list[or_idx as usize], &self.outpt_arena);
+                swap_front_back_sides(
+                    Self::idx_mut(&mut self.outrec_list, or_idx),
+                    &self.outpt_arena,
+                );
             } else if self.is_open_end_idx(e2_idx) {
                 let or_idx = self.active(e2_idx).outrec;
-                swap_front_back_sides(&mut self.outrec_list[or_idx as usize], &self.outpt_arena);
+                swap_front_back_sides(
+                    Self::idx_mut(&mut self.outrec_list, or_idx),
+                    &self.outpt_arena,
+                );
             } else {
                 self.succeeded = false;
                 return NONE;
@@ -1547,12 +1563,12 @@ impl ClipperBase {
 
         if or1 == or2 {
             let or_idx = or1;
-            self.outrec_list[or_idx as usize].pts = result;
+            self.outrec_mut(or_idx).pts = result;
 
             if self.using_polytree {
                 let prev_hot_idx = self.get_prev_hot_edge(e1_idx);
                 if prev_hot_idx == NONE {
-                    self.outrec_list[or_idx as usize].owner = NONE;
+                    self.outrec_mut(or_idx).owner = NONE;
                 } else if prev_hot_idx != NONE {
                     let prev_or = self.active(prev_hot_idx).outrec;
                     if prev_or != NONE {
@@ -1562,10 +1578,10 @@ impl ClipperBase {
             }
 
             uncouple_outrec(e1_idx, &mut self.active_arena, &mut self.outrec_list);
-            let final_result = self.outrec_list[or_idx as usize].pts;
-            let owner = self.outrec_list[or_idx as usize].owner;
-            if owner != NONE && self.outrec_list[owner as usize].front_edge == NONE {
-                self.outrec_list[or_idx as usize].owner = get_real_outrec(&self.outrec_list, owner);
+            let final_result = self.outrec(or_idx).pts;
+            let owner = self.outrec(or_idx).owner;
+            if owner != NONE && self.outrec(owner).front_edge == NONE {
+                self.outrec_mut(or_idx).owner = get_real_outrec(&self.outrec_list, owner);
             }
             return final_result;
         } else if self.is_open_idx(e1_idx) {
@@ -1577,7 +1593,7 @@ impl ClipperBase {
         } else {
             let or1_idx = or1;
             let or2_idx = or2;
-            if self.outrec_list[or1_idx as usize].idx < self.outrec_list[or2_idx as usize].idx {
+            if self.outrec(or1_idx).idx < self.outrec(or2_idx).idx {
                 self.join_outrec_paths(e1_idx, e2_idx);
             } else {
                 self.join_outrec_paths(e2_idx, e1_idx);
@@ -1592,8 +1608,8 @@ impl ClipperBase {
         let or1 = self.active(e1_idx).outrec;
         let or2 = self.active(e2_idx).outrec;
 
-        let p1_st = self.outrec_list[or1 as usize].pts;
-        let p2_st = self.outrec_list[or2 as usize].pts;
+        let p1_st = self.outrec(or1).pts;
+        let p2_st = self.outrec(or2).pts;
         let p1_end = self.outpt(p1_st).next;
         let p2_end = self.outpt(p2_st).next;
 
@@ -1602,9 +1618,9 @@ impl ClipperBase {
             self.outpt_mut(p1_st).next = p2_end;
             self.outpt_mut(p2_st).next = p1_end;
             self.outpt_mut(p1_end).prev = p2_st;
-            self.outrec_list[or1 as usize].pts = p2_st;
-            self.outrec_list[or1 as usize].front_edge = self.outrec_list[or2 as usize].front_edge;
-            let fe = self.outrec_list[or1 as usize].front_edge;
+            self.outrec_mut(or1).pts = p2_st;
+            self.outrec_mut(or1).front_edge = self.outrec(or2).front_edge;
+            let fe = self.outrec(or1).front_edge;
             if fe != NONE {
                 self.active_mut(fe).outrec = or1;
             }
@@ -1613,20 +1629,20 @@ impl ClipperBase {
             self.outpt_mut(p2_st).next = p1_end;
             self.outpt_mut(p1_st).next = p2_end;
             self.outpt_mut(p2_end).prev = p1_st;
-            self.outrec_list[or1 as usize].back_edge = self.outrec_list[or2 as usize].back_edge;
+            self.outrec_mut(or1).back_edge = self.outrec(or2).back_edge;
             let be = self.outrec_list[or1 as usize].back_edge;
             if be != NONE {
                 self.active_mut(be).outrec = or1;
             }
         }
 
-        self.outrec_list[or2 as usize].front_edge = NONE;
-        self.outrec_list[or2 as usize].back_edge = NONE;
-        self.outrec_list[or2 as usize].pts = NONE;
+        self.outrec_mut(or2).front_edge = NONE;
+        self.outrec_mut(or2).back_edge = NONE;
+        self.outrec_mut(or2).pts = NONE;
 
         if self.is_open_end_idx(e1_idx) {
-            self.outrec_list[or2 as usize].pts = self.outrec_list[or1 as usize].pts;
-            self.outrec_list[or1 as usize].pts = NONE;
+            self.outrec_mut(or2).pts = self.outrec(or1).pts;
+            self.outrec_mut(or1).pts = NONE;
         } else {
             set_owner(&mut self.outrec_list, or2, or1);
         }
@@ -1862,9 +1878,9 @@ impl ClipperBase {
         let e_or = self.active(e_idx).outrec;
         let p_or = self.active(prev_idx).outrec;
 
-        if self.outrec_list[e_or as usize].idx == self.outrec_list[p_or as usize].idx {
+        if self.outrec(e_or).idx == self.outrec(p_or).idx {
             self.add_local_max_poly(prev_idx, e_idx, pt);
-        } else if self.outrec_list[e_or as usize].idx < self.outrec_list[p_or as usize].idx {
+        } else if self.outrec(e_or).idx < self.outrec(p_or).idx {
             self.join_outrec_paths(e_idx, prev_idx);
         } else {
             self.join_outrec_paths(prev_idx, e_idx);
@@ -1919,9 +1935,9 @@ impl ClipperBase {
         let e_or = self.active(e_idx).outrec;
         let n_or = self.active(next_idx).outrec;
 
-        if self.outrec_list[e_or as usize].idx == self.outrec_list[n_or as usize].idx {
+        if self.outrec(e_or).idx == self.outrec(n_or).idx {
             self.add_local_max_poly(e_idx, next_idx, pt);
-        } else if self.outrec_list[e_or as usize].idx < self.outrec_list[n_or as usize].idx {
+        } else if self.outrec(e_or).idx < self.outrec(n_or).idx {
             self.join_outrec_paths(e_idx, next_idx);
         } else {
             self.join_outrec_paths(next_idx, e_idx);
@@ -1995,10 +2011,10 @@ impl ClipperBase {
                 _result_op = self.add_out_pt(edge_o, pt);
                 if self.is_front(edge_o) {
                     let or = self.active(edge_o).outrec;
-                    self.outrec_list[or as usize].front_edge = NONE;
+                    self.outrec_mut(or).front_edge = NONE;
                 } else {
                     let or = self.active(edge_o).outrec;
-                    self.outrec_list[or as usize].back_edge = NONE;
+                    self.outrec_mut(or).back_edge = NONE;
                 }
                 self.active_mut(edge_o).outrec = NONE;
             } else if pt == self.active(edge_o).bot
@@ -2395,7 +2411,7 @@ impl ClipperBase {
                 },
             );
             let or = self.outpt(op).outrec;
-            if !self.outrec_list[or as usize].is_open {
+            if !self.outrec(or).is_open {
                 self.add_trial_horz_join(op);
             }
         }
@@ -2510,10 +2526,10 @@ impl ClipperBase {
                     self.add_out_pt(horz_idx, top);
                     if self.is_front(horz_idx) {
                         let or = self.active(horz_idx).outrec;
-                        self.outrec_list[or as usize].front_edge = NONE;
+                        self.outrec_mut(or).front_edge = NONE;
                     } else {
                         let or = self.active(horz_idx).outrec;
-                        self.outrec_list[or as usize].back_edge = NONE;
+                        self.outrec_mut(or).back_edge = NONE;
                     }
                     self.active_mut(horz_idx).outrec = NONE;
                 }
@@ -2773,10 +2789,10 @@ impl ClipperBase {
                 if is_hot_edge(self.active(e_idx)) {
                     if self.is_front(e_idx) {
                         let or = self.active(e_idx).outrec;
-                        self.outrec_list[or as usize].front_edge = NONE;
+                        self.outrec_mut(or).front_edge = NONE;
                     } else {
                         let or = self.active(e_idx).outrec;
-                        self.outrec_list[or as usize].back_edge = NONE;
+                        self.outrec_mut(or).back_edge = NONE;
                     }
                     self.active_mut(e_idx).outrec = NONE;
                 }
@@ -2872,14 +2888,14 @@ impl ClipperBase {
                 continue;
             }
             let real_or_idx = real_or;
-            let has_edges = self.outrec_list[real_or_idx as usize].front_edge != NONE;
+            let has_edges = self.outrec(real_or_idx).front_edge != NONE;
             let curr_y = self.outpt(op).pt.y;
 
             let mut op_p = op;
             let mut op_n = op;
 
             if has_edges {
-                let op_a = self.outrec_list[real_or_idx as usize].pts;
+                let op_a = self.outrec(real_or_idx).pts;
                 let op_z = self.outpt(op_a).next;
                 while op_p != op_z && self.outpt(self.outpt(op_p).prev).pt.y == curr_y {
                     op_p = self.outpt(op_p).prev;
@@ -3058,51 +3074,50 @@ impl ClipperBase {
             if or1 == or2_orig {
                 // 'join' is really a split
                 let or2_new = self.new_out_rec();
-                self.outrec_list[or2_new as usize].pts = op1b;
+                self.outrec_mut(or2_new).pts = op1b;
                 fix_outrec_pts(or2_new, &self.outrec_list, &mut self.outpt_arena);
 
-                if self.outpt(self.outrec_list[or1 as usize].pts).outrec == or2_new {
-                    self.outrec_list[or1 as usize].pts = op1;
+                if self.outpt(self.outrec(or1).pts).outrec == or2_new {
+                    self.outrec_mut(or1).pts = op1;
                     self.outpt_mut(op1).outrec = or1;
                 }
 
                 if self.using_polytree {
                     if path2_contains_path1_outpt(
-                        self.outrec_list[or1 as usize].pts,
-                        self.outrec_list[or2_new as usize].pts,
+                        self.outrec(or1).pts,
+                        self.outrec(or2_new).pts,
                         &self.outpt_arena,
                     ) {
-                        let or1_pts = self.outrec_list[or1 as usize].pts;
-                        let or2_pts = self.outrec_list[or2_new as usize].pts;
-                        self.outrec_list[or1 as usize].pts = or2_pts;
-                        self.outrec_list[or2_new as usize].pts = or1_pts;
+                        let or1_pts = self.outrec(or1).pts;
+                        let or2_pts = self.outrec(or2_new).pts;
+                        self.outrec_mut(or1).pts = or2_pts;
+                        self.outrec_mut(or2_new).pts = or1_pts;
                         fix_outrec_pts(or1, &self.outrec_list, &mut self.outpt_arena);
                         fix_outrec_pts(or2_new, &self.outrec_list, &mut self.outpt_arena);
-                        self.outrec_list[or2_new as usize].owner = or1;
+                        self.outrec_mut(or2_new).owner = or1;
                     } else if path2_contains_path1_outpt(
-                        self.outrec_list[or2_new as usize].pts,
-                        self.outrec_list[or1 as usize].pts,
+                        self.outrec(or2_new).pts,
+                        self.outrec(or1).pts,
                         &self.outpt_arena,
                     ) {
-                        self.outrec_list[or2_new as usize].owner = or1;
+                        self.outrec_mut(or2_new).owner = or1;
                     } else {
-                        self.outrec_list[or2_new as usize].owner =
-                            self.outrec_list[or1 as usize].owner;
+                        self.outrec_mut(or2_new).owner = self.outrec(or1).owner;
                     }
-                    self.outrec_list[or1 as usize].splits.push(or2_new);
+                    self.outrec_mut(or1).splits.push(or2_new);
                 } else {
-                    self.outrec_list[or2_new as usize].owner = or1;
+                    self.outrec_mut(or2_new).owner = or1;
                 }
             } else {
                 // joining, not splitting
-                self.outrec_list[or2_orig as usize].pts = NONE;
+                self.outrec_mut(or2_orig).pts = NONE;
                 if self.using_polytree {
                     set_owner(&mut self.outrec_list, or2_orig, or1);
-                    if !self.outrec_list[or2_orig as usize].splits.is_empty() {
+                    if !self.outrec(or2_orig).splits.is_empty() {
                         move_splits(&mut self.outrec_list, or2_orig, or1);
                     }
                 } else {
-                    self.outrec_list[or2_orig as usize].owner = or1;
+                    self.outrec_mut(or2_orig).owner = or1;
                 }
             }
         }
@@ -3117,15 +3132,15 @@ impl ClipperBase {
         if or_idx == NONE {
             return;
         }
-        if self.outrec_list[or_idx as usize].is_open {
+        if self.outrec(or_idx).is_open {
             return;
         }
-        if !is_valid_closed_path(self.outrec_list[or_idx as usize].pts, &self.outpt_arena) {
+        if !is_valid_closed_path(self.outrec(or_idx).pts, &self.outpt_arena) {
             self.dispose_out_pts(or_idx);
             return;
         }
 
-        let mut start_op = self.outrec_list[or_idx as usize].pts;
+        let mut start_op = self.outrec(or_idx).pts;
         let mut op2 = start_op;
         loop {
             let prev = self.outpt(op2).prev;
@@ -3140,8 +3155,8 @@ impl ClipperBase {
                     || !self.preserve_collinear
                     || dot_product_three_points(prev_pt, op2_pt, next_pt) < 0.0)
             {
-                if op2 == self.outrec_list[or_idx as usize].pts {
-                    self.outrec_list[or_idx as usize].pts = prev;
+                if op2 == self.outrec(or_idx).pts {
+                    self.outrec_mut(or_idx).pts = prev;
                 }
                 op2 = self.dispose_out_pt(op2);
                 if !is_valid_closed_path(op2, &self.outpt_arena) {
@@ -3162,7 +3177,7 @@ impl ClipperBase {
     /// Fix self-intersections in an OutRec
     /// Direct port from clipper.engine.cpp FixSelfIntersects (line 1646)
     fn fix_self_intersects(&mut self, outrec_idx: Idx) {
-        let start_op = self.outrec_list[outrec_idx as usize].pts;
+        let start_op = self.outrec(outrec_idx).pts;
         if start_op == NONE {
             return;
         }
@@ -3201,17 +3216,15 @@ impl ClipperBase {
                     self.outpt_mut(op2).pt = self.outpt(nnn).pt;
                     op2 = self.outpt(op2).next;
                 } else {
-                    if op2 == self.outrec_list[outrec_idx as usize].pts
-                        || next == self.outrec_list[outrec_idx as usize].pts
-                    {
-                        let pts = self.outrec_list[outrec_idx as usize].pts;
-                        self.outrec_list[outrec_idx as usize].pts = self.outpt(pts).prev;
+                    if op2 == self.outrec(outrec_idx).pts || next == self.outrec(outrec_idx).pts {
+                        let pts = self.outrec(outrec_idx).pts;
+                        self.outrec_mut(outrec_idx).pts = self.outpt(pts).prev;
                     }
                     self.do_split_op(outrec_idx, op2);
-                    if self.outrec_list[outrec_idx as usize].pts == NONE {
+                    if self.outrec(outrec_idx).pts == NONE {
                         break;
                     }
-                    op2 = self.outrec_list[outrec_idx as usize].pts;
+                    op2 = self.outrec(outrec_idx).pts;
                     let prev = self.outpt(op2).prev;
                     let next = self.outpt(op2).next;
                     if prev == self.outpt(next).next {
@@ -3223,8 +3236,7 @@ impl ClipperBase {
                 op2 = self.outpt(op2).next;
             }
             if op2 == start_op
-                || (self.outrec_list[outrec_idx as usize].pts != NONE
-                    && op2 == self.outrec_list[outrec_idx as usize].pts)
+                || (self.outrec(outrec_idx).pts != NONE && op2 == self.outrec(outrec_idx).pts)
             {
                 break;
             }
@@ -3237,7 +3249,7 @@ impl ClipperBase {
         let prev_op = self.outpt(split_op).prev;
         let next_op = self.outpt(split_op).next;
         let next_next_op = self.outpt(next_op).next;
-        self.outrec_list[outrec_idx as usize].pts = prev_op;
+        self.outrec_mut(outrec_idx).pts = prev_op;
 
         let mut ip = self.outpt(prev_op).pt;
         get_segment_intersect_pt(
@@ -3260,7 +3272,7 @@ impl ClipperBase {
             );
         }
 
-        let area1 = area_outpt(self.outrec_list[outrec_idx as usize].pts, &self.outpt_arena);
+        let area1 = area_outpt(self.outrec(outrec_idx).pts, &self.outpt_arena);
         let abs_area1 = area1.abs();
         if abs_area1 < 2.0 {
             self.dispose_out_pts(outrec_idx);
@@ -3284,7 +3296,7 @@ impl ClipperBase {
 
         if abs_area2 >= 1.0 && (abs_area2 > abs_area1 || (area2 > 0.0) == (area1 > 0.0)) {
             let new_or = self.new_out_rec();
-            self.outrec_list[new_or as usize].owner = self.outrec_list[outrec_idx as usize].owner;
+            self.outrec_mut(new_or).owner = self.outrec_mut(outrec_idx).owner;
 
             self.outpt_mut(split_op).outrec = new_or;
             self.outpt_mut(next_op).outrec = new_or;
@@ -3292,15 +3304,15 @@ impl ClipperBase {
             let new_op = self.new_out_pt(ip, new_or);
             self.outpt_mut(new_op).prev = next_op;
             self.outpt_mut(new_op).next = split_op;
-            self.outrec_list[new_or as usize].pts = new_op;
+            self.outrec_mut(new_or).pts = new_op;
             self.outpt_mut(split_op).prev = new_op;
             self.outpt_mut(next_op).next = new_op;
 
             if self.using_polytree {
                 if path2_contains_path1_outpt(prev_op, new_op, &self.outpt_arena) {
-                    self.outrec_list[new_or as usize].splits = vec![outrec_idx];
+                    self.outrec_mut(new_or).splits = vec![outrec_idx];
                 } else {
-                    self.outrec_list[outrec_idx as usize].splits.push(new_or);
+                    self.outrec_mut(outrec_idx).splits.push(new_or);
                 }
             }
         }
@@ -3312,28 +3324,28 @@ impl ClipperBase {
     /// Check bounds of an outrec
     /// Direct port from clipper.engine.cpp CheckBounds (line 2929)
     pub fn check_bounds(&mut self, outrec_idx: Idx) -> bool {
-        if self.outrec_list[outrec_idx as usize].pts == NONE {
+        if self.outrec(outrec_idx).pts == NONE {
             return false;
         }
-        if !self.outrec_list[outrec_idx as usize].bounds.is_empty() {
+        if !self.outrec(outrec_idx).bounds.is_empty() {
             return true;
         }
         self.clean_collinear(outrec_idx);
-        if self.outrec_list[outrec_idx as usize].pts == NONE {
+        if self.outrec(outrec_idx).pts == NONE {
             return false;
         }
 
-        let op_start = self.outrec_list[outrec_idx as usize].pts;
+        let op_start = self.outrec(outrec_idx).pts;
         let path =
             build_path64_from_outpt(op_start, self.reverse_solution, false, &self.outpt_arena);
         match path {
             None => {
-                self.outrec_list[outrec_idx as usize].path = Path64::new();
+                self.outrec_mut(outrec_idx).path = Path64::new();
                 false
             }
             Some(p) => {
-                self.outrec_list[outrec_idx as usize].bounds = get_bounds(&p);
-                self.outrec_list[outrec_idx as usize].path = p;
+                self.outrec_mut(outrec_idx).bounds = get_bounds(&p);
+                self.outrec_mut(outrec_idx).path = p;
                 true
             }
         }
@@ -3343,8 +3355,8 @@ impl ClipperBase {
     /// Direct port from clipper.engine.cpp CheckSplitOwner (line 2941)
     fn check_split_owner(&mut self, outrec_idx: Idx, splits: &[Idx]) -> bool {
         for &split_idx in splits {
-            if self.outrec_list[split_idx as usize].pts == NONE {
-                let sub_splits = self.outrec_list[split_idx as usize].splits.clone();
+            if self.outrec(split_idx).pts == NONE {
+                let sub_splits = self.outrec(split_idx).splits.clone();
                 if !sub_splits.is_empty() && self.check_split_owner(outrec_idx, &sub_splits) {
                     return true;
                 }
@@ -3353,11 +3365,11 @@ impl ClipperBase {
             if split == NONE || split == outrec_idx {
                 continue;
             }
-            if self.outrec_list[split as usize].recursive_split == outrec_idx {
+            if self.outrec(split).recursive_split == outrec_idx {
                 continue;
             }
-            self.outrec_list[split as usize].recursive_split = outrec_idx;
-            let sub_splits = self.outrec_list[split as usize].splits.clone();
+            self.outrec_mut(split).recursive_split = outrec_idx;
+            let sub_splits = self.outrec(split).splits.clone();
             if !&sub_splits.is_empty() && self.check_split_owner(outrec_idx, &sub_splits) {
                 return true;
             }
@@ -3365,26 +3377,22 @@ impl ClipperBase {
             if !self.check_bounds(split) {
                 continue;
             }
-            let or_bounds = self.outrec_list[outrec_idx as usize].bounds;
-            if !self.outrec_list[split as usize]
-                .bounds
-                .contains_rect(&or_bounds)
-            {
+            let or_bounds = self.outrec(outrec_idx).bounds;
+            if !self.outrec(split).bounds.contains_rect(&or_bounds) {
                 continue;
             }
 
-            let or_pts = self.outrec_list[outrec_idx as usize].pts;
-            let split_pts = self.outrec_list[split as usize].pts;
+            let or_pts = self.outrec(outrec_idx).pts;
+            let split_pts = self.outrec(split).pts;
             if !path2_contains_path1_outpt(or_pts, split_pts, &self.outpt_arena) {
                 continue;
             }
 
             if !is_valid_owner(&self.outrec_list, outrec_idx, split) {
-                self.outrec_list[split as usize].owner =
-                    self.outrec_list[outrec_idx as usize].owner;
+                self.outrec_mut(split).owner = self.outrec(outrec_idx).owner;
             }
 
-            self.outrec_list[outrec_idx as usize].owner = split;
+            self.outrec_mut(outrec_idx).owner = split;
             return true;
         }
         false
@@ -3393,48 +3401,46 @@ impl ClipperBase {
     /// Recursively check and set owners for polytree building
     /// Direct port from clipper.engine.cpp RecursiveCheckOwners (line 2967)
     pub fn recursive_check_owners(&mut self, outrec_idx: Idx, polytree: &mut PolyTree64) {
-        if self.outrec_list[outrec_idx as usize].polypath != NONE
-            || self.outrec_list[outrec_idx as usize].bounds.is_empty()
-        {
+        if self.outrec(outrec_idx).polypath != NONE || self.outrec(outrec_idx).bounds.is_empty() {
             return;
         }
 
-        let mut owner = self.outrec_list[outrec_idx as usize].owner;
+        let mut owner = self.outrec(outrec_idx).owner;
         while owner != NONE {
-            let splits = self.outrec_list[owner as usize].splits.clone();
+            let splits = self.outrec(owner).splits.clone();
             if !splits.is_empty() && self.check_split_owner(outrec_idx, &splits) {
                 break;
             }
-            if self.outrec_list[owner as usize].pts != NONE && self.check_bounds(owner) {
-                let or_bounds = self.outrec_list[outrec_idx as usize].bounds;
-                let owner_bounds = self.outrec_list[owner as usize].bounds;
+            if self.outrec(owner).pts != NONE && self.check_bounds(owner) {
+                let or_bounds = self.outrec(outrec_idx).bounds;
+                let owner_bounds = self.outrec(owner).bounds;
                 let contains = owner_bounds.contains_rect(&or_bounds);
                 if contains {
-                    let or_pts = self.outrec_list[outrec_idx as usize].pts;
-                    let owner_pts = self.outrec_list[owner as usize].pts;
+                    let or_pts = self.outrec(outrec_idx).pts;
+                    let owner_pts = self.outrec(owner).pts;
                     let p2cp1 = path2_contains_path1_outpt(or_pts, owner_pts, &self.outpt_arena);
                     if p2cp1 {
                         break;
                     }
                 }
             }
-            self.outrec_list[outrec_idx as usize].owner = self.outrec_list[owner as usize].owner;
-            owner = self.outrec_list[outrec_idx as usize].owner;
+            self.outrec_mut(outrec_idx).owner = self.outrec(owner).owner;
+            owner = self.outrec(outrec_idx).owner;
         }
 
-        let path = self.outrec_list[outrec_idx as usize].path.clone();
-        let owner = self.outrec_list[outrec_idx as usize].owner;
+        let path = self.outrec(outrec_idx).path.clone();
+        let owner = self.outrec(outrec_idx).owner;
         if owner != NONE {
-            if self.outrec_list[owner as usize].polypath == NONE {
+            if self.outrec(owner).polypath == NONE {
                 self.recursive_check_owners(owner, polytree);
             }
-            let parent_pp = self.outrec_list[owner as usize].polypath;
+            let parent_pp = self.outrec(owner).polypath;
             let parent_pp = if parent_pp == NONE { 0 } else { parent_pp };
             let pp = polytree.add_child(parent_pp as usize, path);
-            self.outrec_list[outrec_idx as usize].polypath = pp as Idx;
+            self.outrec_mut(outrec_idx).polypath = pp as Idx;
         } else {
             let pp = polytree.add_child(0, path);
-            self.outrec_list[outrec_idx as usize].polypath = pp as Idx;
+            self.outrec_mut(outrec_idx).polypath = pp as Idx;
         }
     }
 
