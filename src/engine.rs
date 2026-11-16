@@ -1635,7 +1635,7 @@ impl ClipperBase {
             self.outpt_mut(p1_st).next = p2_end;
             self.outpt_mut(p2_end).prev = p1_st;
             self.outrec_mut(or1).back_edge = self.outrec(or2).back_edge;
-            let be = self.outrec_list[or1 as usize].back_edge;
+            let be = self.outrec(or1).back_edge;
             if be != NONE {
                 self.active_mut(be).outrec = or1;
             }
