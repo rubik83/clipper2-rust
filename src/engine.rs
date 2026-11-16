@@ -537,6 +537,11 @@ impl ClipperBase {
     }
 
     #[inline]
+    fn idx_swap<T>(array: &mut [T], idx_a: Idx, idx_b: Idx) {
+        array.swap(idx_a as usize, idx_b as usize)
+    }
+
+    #[inline]
     fn active(&self, idx: Idx) -> &Active {
         Self::idx(&self.active_arena, idx)
     }
@@ -579,6 +584,16 @@ impl ClipperBase {
     #[inline]
     fn minima(&self, idx: Idx) -> &LocalMinima {
         Self::idx(&self.minima_list, idx)
+    }
+
+    #[inline]
+    fn intersect(&self, idx: Idx) -> &IntersectNode {
+        Self::idx(&self.intersect_nodes, idx)
+    }
+
+    #[inline]
+    fn intersect_swap(&mut self, idx_a: Idx, idx_b: Idx) {
+        Self::idx_swap(&mut self.intersect_nodes, idx_a, idx_b)
     }
 
     /// Add a local minimum
@@ -2717,21 +2732,19 @@ impl ClipperBase {
         let len = self.intersect_nodes.len() as Idx;
         for i in 0..len {
             // Ensure edges are adjacent
-            if !edges_adjacent_in_ael(&self.intersect_nodes[i as usize], &self.active_arena) {
+            if !edges_adjacent_in_ael(self.intersect(i), &self.active_arena) {
                 let mut j = i + 1;
-                while j < len
-                    && !edges_adjacent_in_ael(&self.intersect_nodes[j as usize], &self.active_arena)
-                {
+                while j < len && !edges_adjacent_in_ael(self.intersect(j), &self.active_arena) {
                     j += 1;
                 }
                 if j < len {
-                    self.intersect_nodes.swap(i as usize, j as usize);
+                    self.intersect_swap(i, j);
                 }
             }
 
-            let e1 = self.intersect_nodes[i as usize].edge1;
-            let e2 = self.intersect_nodes[i as usize].edge2;
-            let pt = self.intersect_nodes[i as usize].pt;
+            let e1 = self.intersect(i).edge1;
+            let e2 = self.intersect(i).edge2;
+            let pt = self.intersect(i).pt;
 
             self.intersect_edges(e1, e2, pt);
             self.swap_positions_in_ael(e1, e2);
