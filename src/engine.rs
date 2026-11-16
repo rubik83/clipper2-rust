@@ -596,6 +596,16 @@ impl ClipperBase {
         Self::idx_swap(&mut self.intersect_nodes, idx_a, idx_b)
     }
 
+    #[inline]
+    fn horz_seg(&self, idx: Idx) -> &HorzSegment {
+        Self::idx(&self.horz_seg_list, idx)
+    }
+
+    #[inline]
+    fn horz_seg_mut(&mut self, idx: Idx) -> &mut HorzSegment {
+        Self::idx_mut(&mut self.horz_seg_list, idx)
+    }
+
     /// Add a local minimum
     /// Direct port from clipper.engine.cpp AddLocMin
     pub fn add_loc_min(&mut self, vert_idx: Idx, polytype: PathType, is_open: bool) {
@@ -2877,13 +2887,13 @@ impl ClipperBase {
             return false;
         }
         if self.outpt(op_p).pt.x < self.outpt(op_n).pt.x {
-            self.horz_seg_list[hs_idx as usize].left_op = op_p;
-            self.horz_seg_list[hs_idx as usize].right_op = op_n;
-            self.horz_seg_list[hs_idx as usize].left_to_right = true;
+            self.horz_seg_mut(hs_idx).left_op = op_p;
+            self.horz_seg_mut(hs_idx).right_op = op_n;
+            self.horz_seg_mut(hs_idx).left_to_right = true;
         } else {
-            self.horz_seg_list[hs_idx as usize].left_op = op_n;
-            self.horz_seg_list[hs_idx as usize].right_op = op_p;
-            self.horz_seg_list[hs_idx as usize].left_to_right = false;
+            self.horz_seg_mut(hs_idx).left_op = op_n;
+            self.horz_seg_mut(hs_idx).right_op = op_p;
+            self.horz_seg_mut(hs_idx).left_to_right = false;
         }
         true
     }
@@ -2894,7 +2904,7 @@ impl ClipperBase {
         // Update horizontal segments
         let mut valid_count = 0;
         for i in 0..self.horz_seg_list.len() as Idx {
-            let op = self.horz_seg_list[i as usize].left_op;
+            let op = self.horz_seg(i).left_op;
             if op == NONE {
                 continue;
             }
@@ -2933,25 +2943,25 @@ impl ClipperBase {
             }
 
             if self.outpt(op_p).pt.x == self.outpt(op_n).pt.x {
-                self.horz_seg_list[i as usize].right_op = NONE;
+                self.horz_seg_mut(i).right_op = NONE;
                 continue;
             }
 
             // Set heading
             if self.outpt(op_p).pt.x < self.outpt(op_n).pt.x {
-                self.horz_seg_list[i as usize].left_op = op_p;
-                self.horz_seg_list[i as usize].right_op = op_n;
-                self.horz_seg_list[i as usize].left_to_right = true;
+                self.horz_seg_mut(i).left_op = op_p;
+                self.horz_seg_mut(i).right_op = op_n;
+                self.horz_seg_mut(i).left_to_right = true;
             } else {
-                self.horz_seg_list[i as usize].left_op = op_n;
-                self.horz_seg_list[i as usize].right_op = op_p;
-                self.horz_seg_list[i as usize].left_to_right = false;
+                self.horz_seg_mut(i).left_op = op_n;
+                self.horz_seg_mut(i).right_op = op_p;
+                self.horz_seg_mut(i).left_to_right = false;
             }
 
             // Check if left_op already has a horz
-            let left_op = self.horz_seg_list[i as usize].left_op;
+            let left_op = self.horz_seg(i).left_op;
             if self.outpt(left_op).horz != NONE {
-                self.horz_seg_list[i as usize].right_op = NONE;
+                self.horz_seg_mut(i).right_op = NONE;
                 continue;
             }
 
@@ -2984,77 +2994,64 @@ impl ClipperBase {
 
         // Find pairs and create joins
         for i in 0..self.horz_seg_list.len() as Idx {
-            if self.horz_seg_list[i as usize].right_op == NONE {
+            if self.horz_seg(i).right_op == NONE {
                 break;
             }
             for j in (i + 1)..self.horz_seg_list.len() as Idx {
-                if self.horz_seg_list[j as usize].right_op == NONE {
+                if self.horz_seg(j).right_op == NONE {
                     break;
                 }
 
-                let hs1_left_x = self.outpt_arena
-                    [(self.horz_seg_list[i as usize].left_op) as usize]
-                    .pt
-                    .x;
-                let hs1_right_x = self.outpt_arena
-                    [(self.horz_seg_list[i as usize].right_op) as usize]
-                    .pt
-                    .x;
-                let hs2_left_x = self.outpt_arena
-                    [(self.horz_seg_list[j as usize].left_op) as usize]
-                    .pt
-                    .x;
-                let hs2_right_x = self.outpt_arena
-                    [(self.horz_seg_list[j as usize].right_op) as usize]
-                    .pt
-                    .x;
+                let hs1_left_x = self.outpt_arena[self.horz_seg(i).left_op as usize].pt.x;
+                let hs1_right_x = self.outpt_arena[self.horz_seg(i).right_op as usize].pt.x;
+                let hs2_left_x = self.outpt_arena[self.horz_seg(j).left_op as usize].pt.x;
+                let hs2_right_x = self.outpt_arena[self.horz_seg(j).right_op as usize].pt.x;
 
                 if hs2_left_x >= hs1_right_x
-                    || self.horz_seg_list[j as usize].left_to_right
-                        == self.horz_seg_list[i as usize].left_to_right
+                    || self.horz_seg(j).left_to_right == self.horz_seg(i).left_to_right
                     || hs2_right_x <= hs1_left_x
                 {
                     continue;
                 }
 
-                let curr_y = self.outpt(self.horz_seg_list[i as usize].left_op).pt.y;
-                let hs1_ltr = self.horz_seg_list[i as usize].left_to_right;
+                let curr_y = self.outpt(self.horz_seg(i).left_op).pt.y;
+                let hs1_ltr = self.horz_seg(i).left_to_right;
 
                 if hs1_ltr {
                     // C++ modifies hs1->left_op persistently
-                    let mut lo1 = self.horz_seg_list[i as usize].left_op;
+                    let mut lo1 = self.horz_seg(i).left_op;
                     while self.outpt(self.outpt(lo1).next).pt.y == curr_y
                         && self.outpt(self.outpt(lo1).next).pt.x <= hs2_left_x
                     {
                         lo1 = self.outpt(lo1).next;
                     }
-                    self.horz_seg_list[i as usize].left_op = lo1;
-                    let mut lo2 = self.horz_seg_list[j as usize].left_op;
+                    self.horz_seg_mut(i).left_op = lo1;
+                    let mut lo2 = self.horz_seg(j).left_op;
                     while self.outpt(self.outpt(lo2).prev).pt.y == curr_y
                         && self.outpt(self.outpt(lo2).prev).pt.x <= self.outpt(lo1).pt.x
                     {
                         lo2 = self.outpt(lo2).prev;
                     }
-                    self.horz_seg_list[j as usize].left_op = lo2;
+                    self.horz_seg_mut(j).left_op = lo2;
                     let dup1 = self.duplicate_op(lo1, true);
                     let dup2 = self.duplicate_op(lo2, false);
                     self.horz_join_list.push(HorzJoin::with_ops(dup1, dup2));
                 } else {
                     // C++ modifies hs1->left_op persistently
-                    let mut lo1 = self.horz_seg_list[i as usize].left_op;
+                    let mut lo1 = self.horz_seg(i).left_op;
                     while self.outpt(self.outpt(lo1).prev).pt.y == curr_y
                         && self.outpt(self.outpt(lo1).prev).pt.x <= hs2_left_x
                     {
                         lo1 = self.outpt(lo1).prev;
                     }
-                    self.horz_seg_list[i as usize].left_op = lo1;
-                    let mut lo2 = self.horz_seg_list[j as usize].left_op;
+                    self.horz_seg_mut(i).left_op = lo1;
+                    let mut lo2 = self.horz_seg(j).left_op;
                     while self.outpt(self.outpt(lo2).next).pt.y == curr_y
                         && self.outpt(self.outpt(lo2).next).pt.x <= self.outpt(lo1).pt.x
                     {
                         lo2 = self.outpt(lo2).next;
                     }
-                    self.horz_seg_list[j as usize].left_op = lo2;
+                    self.horz_seg_mut(j).left_op = lo2;
                     let dup1 = self.duplicate_op(lo2, true);
                     let dup2 = self.duplicate_op(lo1, false);
                     self.horz_join_list.push(HorzJoin::with_ops(dup1, dup2));
