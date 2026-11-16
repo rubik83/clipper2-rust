@@ -337,8 +337,8 @@ fn test_clipper_base_new_out_rec() {
     let idx2 = cb.new_out_rec();
     assert_eq!(idx1, 0);
     assert_eq!(idx2, 1);
-    assert_eq!(cb.outrec_list[idx1 as usize].idx, 0);
-    assert_eq!(cb.outrec_list[idx2 as usize].idx, 1);
+    assert_eq!(cb.outrec(idx1).idx, 0);
+    assert_eq!(cb.outrec(idx2).idx, 1);
 }
 
 #[test]
@@ -378,8 +378,8 @@ fn test_clipper_base_swap_outrecs() {
 
     cb.active_arena[e1 as usize].outrec = or1;
     cb.active_arena[e2 as usize].outrec = or2;
-    cb.outrec_list[or1 as usize].front_edge = e1;
-    cb.outrec_list[or2 as usize].front_edge = e2;
+    cb.outrec_mut(or1).front_edge = e1;
+    cb.outrec_mut(or2).front_edge = e2;
 
     cb.swap_outrecs(e1, e2);
     assert_eq!(cb.active_arena[e1 as usize].outrec, or2);

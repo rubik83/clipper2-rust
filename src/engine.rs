@@ -572,7 +572,7 @@ impl ClipperBase {
     }
 
     #[inline]
-    fn outrec(&self, idx: Idx) -> &OutRec {
+    pub fn outrec(&self, idx: Idx) -> &OutRec {
         Self::idx(&self.outrec_list, idx)
     }
 
