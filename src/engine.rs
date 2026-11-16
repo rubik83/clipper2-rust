@@ -2037,7 +2037,8 @@ impl ClipperBase {
                 self.active_mut(edge_o).outrec = NONE;
             } else if pt == self.active(edge_o).bot
                 && pt
-                    == self.vertex_arena[self.minima(self.active(edge_o).local_min).vertex as usize]
+                    == self
+                        .vertex(self.minima(self.active(edge_o).local_min).vertex)
                         .pt
                 && !is_open_end_vertex(
                     self.vertex(self.minima(self.active(edge_o).local_min).vertex),
