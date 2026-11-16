@@ -527,52 +527,52 @@ impl ClipperBase {
     }
 
     #[inline]
-    pub fn idx<T>(array: &[T], idx: Idx) -> &T {
+    fn idx<T>(array: &[T], idx: Idx) -> &T {
         &array[idx as usize]
     }
 
     #[inline]
-    pub fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
+    fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
         &mut array[idx as usize]
     }
 
     #[inline]
-    pub fn active(&self, idx: Idx) -> &Active {
+    fn active(&self, idx: Idx) -> &Active {
         Self::idx(&self.active_arena, idx)
     }
 
     #[inline]
-    pub fn active_mut(&mut self, idx: Idx) -> &mut Active {
+    fn active_mut(&mut self, idx: Idx) -> &mut Active {
         Self::idx_mut(&mut self.active_arena, idx)
     }
 
     #[inline]
-    pub fn vertex(&self, idx: Idx) -> &Vertex {
+    fn vertex(&self, idx: Idx) -> &Vertex {
         Self::idx(&self.vertex_arena, idx)
     }
 
     #[inline]
-    pub fn vertex_mut(&mut self, idx: Idx) -> &mut Vertex {
+    fn vertex_mut(&mut self, idx: Idx) -> &mut Vertex {
         Self::idx_mut(&mut self.vertex_arena, idx)
     }
 
     #[inline]
-    pub fn outpt(&self, idx: Idx) -> &OutPt {
+    fn outpt(&self, idx: Idx) -> &OutPt {
         Self::idx(&self.outpt_arena, idx)
     }
 
     #[inline]
-    pub fn outpt_mut(&mut self, idx: Idx) -> &mut OutPt {
+    fn outpt_mut(&mut self, idx: Idx) -> &mut OutPt {
         Self::idx_mut(&mut self.outpt_arena, idx)
     }
 
     #[inline]
-    pub fn outrec(&self, idx: Idx) -> &OutRec {
+    fn outrec(&self, idx: Idx) -> &OutRec {
         Self::idx(&self.outrec_list, idx)
     }
 
     #[inline]
-    pub fn outrec_mut(&mut self, idx: Idx) -> &mut OutRec {
+    fn outrec_mut(&mut self, idx: Idx) -> &mut OutRec {
         Self::idx_mut(&mut self.outrec_list, idx)
     }
 
