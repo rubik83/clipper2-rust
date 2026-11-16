@@ -491,7 +491,7 @@ impl ClipperBase {
     #[inline]
     pub fn pop_local_minima(&mut self, y: i64) -> Option<Idx> {
         if self.current_locmin_idx < self.minima_list.len() as Idx {
-            let vertex_idx = self.minima_list[self.current_locmin_idx as usize].vertex;
+            let vertex_idx = self.minima(self.current_locmin_idx).vertex;
             if self.vertex(vertex_idx).pt.y == y {
                 let idx = self.current_locmin_idx;
                 self.current_locmin_idx += 1;
@@ -574,6 +574,11 @@ impl ClipperBase {
     #[inline]
     fn outrec_mut(&mut self, idx: Idx) -> &mut OutRec {
         Self::idx_mut(&mut self.outrec_list, idx)
+    }
+
+    #[inline]
+    fn minima(&self, idx: Idx) -> &LocalMinima {
+        Self::idx(&self.minima_list, idx)
     }
 
     /// Add a local minimum
@@ -1069,7 +1074,7 @@ impl ClipperBase {
     /// Check if an active edge is part of an open path
     #[inline]
     fn is_open_idx(&self, e_idx: Idx) -> bool {
-        self.minima_list[(self.active(e_idx).local_min) as usize].is_open
+        self.minima(self.active(e_idx).local_min).is_open
     }
 
     /// Check if an active edge is at a local maximum
@@ -1093,14 +1098,14 @@ impl ClipperBase {
     /// Get polytype for an active edge
     #[inline]
     fn get_poly_type_idx(&self, e_idx: Idx) -> PathType {
-        self.minima_list[(self.active(e_idx).local_min) as usize].polytype
+        self.minima(self.active(e_idx).local_min).polytype
     }
 
     /// Check if two edges have same polytype
     #[inline]
     fn is_same_poly_type_idx(&self, e1: Idx, e2: Idx) -> bool {
-        self.minima_list[(self.active(e1).local_min) as usize].polytype
-            == self.minima_list[(self.active(e2).local_min) as usize].polytype
+        self.minima(self.active(e1).local_min).polytype
+            == self.minima(self.active(e2).local_min).polytype
     }
 
     /// Get next vertex index for an active
@@ -1121,7 +1126,7 @@ impl ClipperBase {
         self.sort_minima_list();
         // Insert all local minima y-values as scanlines
         for i in (0..self.minima_list.len() as Idx).rev() {
-            let y = self.vertex(self.minima_list[i as usize].vertex).pt.y;
+            let y = self.vertex(self.minima(i).vertex).pt.y;
             self.insert_scanline(y);
         }
         self.current_locmin_idx = 0;
@@ -1978,9 +1983,7 @@ impl ClipperBase {
                     }
                 }
                 _ => {
-                    if self.minima_list[(self.active(edge_c).local_min) as usize].polytype
-                        == PathType::Subject
-                    {
+                    if self.minima(self.active(edge_c).local_min).polytype == PathType::Subject {
                         return;
                     }
                 }
@@ -2019,11 +2022,10 @@ impl ClipperBase {
                 self.active_mut(edge_o).outrec = NONE;
             } else if pt == self.active(edge_o).bot
                 && pt
-                    == self.vertex_arena
-                        [self.minima_list[(self.active(edge_o).local_min) as usize].vertex as usize]
+                    == self.vertex_arena[self.minima(self.active(edge_o).local_min).vertex as usize]
                         .pt
                 && !is_open_end_vertex(
-                    self.vertex(self.minima_list[(self.active(edge_o).local_min) as usize].vertex),
+                    self.vertex(self.minima(self.active(edge_o).local_min).vertex),
                 )
             {
                 let e3_idx = self.find_edge_with_matching_loc_min(edge_o);
@@ -2234,7 +2236,7 @@ impl ClipperBase {
     /// Direct port from clipper.engine.cpp InsertLocalMinimaIntoAEL (line 1198)
     fn insert_local_minima_into_ael(&mut self, bot_y: i64) {
         while let Some(loc_min_idx) = self.pop_local_minima(bot_y) {
-            let vert_idx = self.minima_list[loc_min_idx as usize].vertex;
+            let vert_idx = self.minima(loc_min_idx).vertex;
             let vert_flags = self.vertex(vert_idx).flags;
             let vert_pt = self.vertex(vert_idx).pt;
 
