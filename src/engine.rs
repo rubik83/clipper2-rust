@@ -3002,10 +3002,10 @@ impl ClipperBase {
                     break;
                 }
 
-                let hs1_left_x = self.outpt_arena[self.horz_seg(i).left_op as usize].pt.x;
-                let hs1_right_x = self.outpt_arena[self.horz_seg(i).right_op as usize].pt.x;
-                let hs2_left_x = self.outpt_arena[self.horz_seg(j).left_op as usize].pt.x;
-                let hs2_right_x = self.outpt_arena[self.horz_seg(j).right_op as usize].pt.x;
+                let hs1_left_x = self.outpt(self.horz_seg(i).left_op).pt.x;
+                let hs1_right_x = self.outpt(self.horz_seg(i).right_op).pt.x;
+                let hs2_left_x = self.outpt(self.horz_seg(j).left_op).pt.x;
+                let hs2_right_x = self.outpt(self.horz_seg(j).right_op).pt.x;
 
                 if hs2_left_x >= hs1_right_x
                     || self.horz_seg(j).left_to_right == self.horz_seg(i).left_to_right
