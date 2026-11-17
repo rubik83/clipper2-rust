@@ -11,6 +11,21 @@ use std::collections::BinaryHeap;
 
 pub type Idx = u32;
 
+#[inline]
+pub fn idx<T>(array: &[T], idx: Idx) -> &T {
+    &array[idx as usize]
+}
+
+#[inline]
+pub fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
+    &mut array[idx as usize]
+}
+
+#[inline]
+pub fn idx_swap<T>(array: &mut [T], idx_a: Idx, idx_b: Idx) {
+    array.swap(idx_a as usize, idx_b as usize)
+}
+
 // ============================================================================
 // Sentinel value for null indices in arena-based structures
 // ============================================================================
@@ -527,83 +542,68 @@ impl ClipperBase {
     }
 
     #[inline]
-    fn idx<T>(array: &[T], idx: Idx) -> &T {
-        &array[idx as usize]
+    fn active(&self, i: Idx) -> &Active {
+        idx(&self.active_arena, i)
     }
 
     #[inline]
-    fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
-        &mut array[idx as usize]
+    fn active_mut(&mut self, i: Idx) -> &mut Active {
+        idx_mut(&mut self.active_arena, i)
     }
 
     #[inline]
-    fn idx_swap<T>(array: &mut [T], idx_a: Idx, idx_b: Idx) {
-        array.swap(idx_a as usize, idx_b as usize)
+    fn vertex(&self, i: Idx) -> &Vertex {
+        idx(&self.vertex_arena, i)
     }
 
     #[inline]
-    fn active(&self, idx: Idx) -> &Active {
-        Self::idx(&self.active_arena, idx)
+    fn vertex_mut(&mut self, i: Idx) -> &mut Vertex {
+        idx_mut(&mut self.vertex_arena, i)
     }
 
     #[inline]
-    fn active_mut(&mut self, idx: Idx) -> &mut Active {
-        Self::idx_mut(&mut self.active_arena, idx)
+    fn outpt(&self, i: Idx) -> &OutPt {
+        idx(&self.outpt_arena, i)
     }
 
     #[inline]
-    fn vertex(&self, idx: Idx) -> &Vertex {
-        Self::idx(&self.vertex_arena, idx)
+    fn outpt_mut(&mut self, i: Idx) -> &mut OutPt {
+        idx_mut(&mut self.outpt_arena, i)
     }
 
     #[inline]
-    fn vertex_mut(&mut self, idx: Idx) -> &mut Vertex {
-        Self::idx_mut(&mut self.vertex_arena, idx)
+    pub fn outrec(&self, i: Idx) -> &OutRec {
+        idx(&self.outrec_list, i)
     }
 
     #[inline]
-    fn outpt(&self, idx: Idx) -> &OutPt {
-        Self::idx(&self.outpt_arena, idx)
+    fn outrec_mut(&mut self, i: Idx) -> &mut OutRec {
+        idx_mut(&mut self.outrec_list, i)
     }
 
     #[inline]
-    fn outpt_mut(&mut self, idx: Idx) -> &mut OutPt {
-        Self::idx_mut(&mut self.outpt_arena, idx)
+    fn minima(&self, i: Idx) -> &LocalMinima {
+        idx(&self.minima_list, i)
     }
 
     #[inline]
-    pub fn outrec(&self, idx: Idx) -> &OutRec {
-        Self::idx(&self.outrec_list, idx)
+    fn intersect(&self, i: Idx) -> &IntersectNode {
+        idx(&self.intersect_nodes, i)
     }
 
     #[inline]
-    fn outrec_mut(&mut self, idx: Idx) -> &mut OutRec {
-        Self::idx_mut(&mut self.outrec_list, idx)
+    fn intersect_swap(&mut self, i: Idx, j: Idx) {
+        idx_swap(&mut self.intersect_nodes, i, j)
     }
 
     #[inline]
-    fn minima(&self, idx: Idx) -> &LocalMinima {
-        Self::idx(&self.minima_list, idx)
+    fn horz_seg(&self, i: Idx) -> &HorzSegment {
+        idx(&self.horz_seg_list, i)
     }
 
     #[inline]
-    fn intersect(&self, idx: Idx) -> &IntersectNode {
-        Self::idx(&self.intersect_nodes, idx)
-    }
-
-    #[inline]
-    fn intersect_swap(&mut self, idx_a: Idx, idx_b: Idx) {
-        Self::idx_swap(&mut self.intersect_nodes, idx_a, idx_b)
-    }
-
-    #[inline]
-    fn horz_seg(&self, idx: Idx) -> &HorzSegment {
-        Self::idx(&self.horz_seg_list, idx)
-    }
-
-    #[inline]
-    fn horz_seg_mut(&mut self, idx: Idx) -> &mut HorzSegment {
-        Self::idx_mut(&mut self.horz_seg_list, idx)
+    fn horz_seg_mut(&mut self, i: Idx) -> &mut HorzSegment {
+        idx_mut(&mut self.horz_seg_list, i)
     }
 
     /// Add a local minimum
@@ -1168,12 +1168,12 @@ impl ClipperBase {
         if self.z_callback.is_none() {
             return;
         }
-        let e1 = Self::idx(&self.active_arena, e1_idx);
-        let e2 = Self::idx(&self.active_arena, e2_idx);
+        let e1 = idx(&self.active_arena, e1_idx);
+        let e2 = idx(&self.active_arena, e2_idx);
         // prioritize subject over clip vertices by passing
         // subject vertices before clip vertices in the callback
         if self.get_poly_type_idx(e1_idx) == PathType::Subject {
-            let ip = &mut Self::idx_mut(&mut self.outpt_arena, ip_idx).pt;
+            let ip = &mut idx_mut(&mut self.outpt_arena, ip_idx).pt;
             if *ip == e1.bot {
                 ip.z = e1.bot.z;
             } else if *ip == e1.top {
@@ -1187,7 +1187,7 @@ impl ClipperBase {
             }
             self.z_callback.as_mut().unwrap()(&e1.bot, &e1.top, &e2.bot, &e2.top, ip);
         } else {
-            let ip = &mut Self::idx_mut(&mut self.outpt_arena, ip_idx).pt;
+            let ip = &mut idx_mut(&mut self.outpt_arena, ip_idx).pt;
             if *ip == e2.bot {
                 ip.z = e2.bot.z;
             } else if *ip == e2.top {
@@ -1571,16 +1571,10 @@ impl ClipperBase {
         if self.is_front(e1_idx) == self.is_front(e2_idx) {
             if self.is_open_end_idx(e1_idx) {
                 let or_idx = self.active(e1_idx).outrec;
-                swap_front_back_sides(
-                    Self::idx_mut(&mut self.outrec_list, or_idx),
-                    &self.outpt_arena,
-                );
+                swap_front_back_sides(idx_mut(&mut self.outrec_list, or_idx), &self.outpt_arena);
             } else if self.is_open_end_idx(e2_idx) {
                 let or_idx = self.active(e2_idx).outrec;
-                swap_front_back_sides(
-                    Self::idx_mut(&mut self.outrec_list, or_idx),
-                    &self.outpt_arena,
-                );
+                swap_front_back_sides(idx_mut(&mut self.outrec_list, or_idx), &self.outpt_arena);
             } else {
                 self.succeeded = false;
                 return NONE;
@@ -2987,8 +2981,8 @@ impl ClipperBase {
             if !a_valid {
                 return std::cmp::Ordering::Equal;
             }
-            let a_x = Self::idx(&self.outpt_arena, a.left_op).pt.x;
-            let b_x = Self::idx(&self.outpt_arena, b.left_op).pt.x;
+            let a_x = idx(&self.outpt_arena, a.left_op).pt.x;
+            let b_x = idx(&self.outpt_arena, b.left_op).pt.x;
             a_x.cmp(&b_x)
         });
 

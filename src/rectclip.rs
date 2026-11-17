@@ -4,7 +4,7 @@
 //! Copyright (c) Angus Johnson 2010-2025
 //! Provides high-performance rectangle clipping functionality
 
-use crate::core::*;
+use crate::{core::*, idx, idx_mut, Idx, NONE};
 
 // ============================================================================
 // OutPt2 - Arena-allocated doubly-linked circular list node
@@ -15,13 +15,13 @@ use crate::core::*;
 /// Direct port from clipper.rectclip.h line 25
 struct OutPt2 {
     pt: Point64,
-    owner_idx: usize,
+    owner_idx: Idx,
     /// Which edge array (0-7) this point belongs to, or None
-    edge_idx: Option<usize>,
+    edge_idx: Idx,
     /// Index of next OutPt2 in the arena
-    next: usize,
+    next: Idx,
     /// Index of previous OutPt2 in the arena
-    prev: usize,
+    prev: Idx,
 }
 
 impl OutPt2 {
@@ -29,7 +29,7 @@ impl OutPt2 {
         Self {
             pt,
             owner_idx: 0,
-            edge_idx: None,
+            edge_idx: NONE,
             next: 0,
             prev: 0,
         }
@@ -276,7 +276,7 @@ fn get_edges_for_pt(pt: &Point64, rec: &Rect64) -> u32 {
 /// Check if heading is clockwise along a specific edge
 /// Direct port from clipper.rectclip.cpp line 257
 #[inline]
-fn is_heading_clockwise(pt1: &Point64, pt2: &Point64, edge_idx: i32) -> bool {
+fn is_heading_clockwise(pt1: &Point64, pt2: &Point64, edge_idx: Idx) -> bool {
     match edge_idx {
         0 => pt2.y < pt1.y,
         1 => pt2.x > pt1.x,
@@ -328,9 +328,9 @@ pub struct RectClip64 {
     rect_as_path: Path64,
     rect_mp: Point64,
     path_bounds: Rect64,
-    arena: Vec<OutPt2>,
-    results: Vec<Option<usize>>,
-    edges: [Vec<Option<usize>>; 8],
+    outpt2_arena: Vec<OutPt2>,
+    results: Vec<Idx>,
+    edges: [Vec<Idx>; 8],
     start_locs: Vec<Location>,
 }
 
@@ -345,7 +345,7 @@ impl RectClip64 {
             rect_as_path,
             rect_mp,
             path_bounds: Rect64::new(0, 0, 0, 0),
-            arena: Vec::new(),
+            outpt2_arena: Vec::new(),
             results: Vec::new(),
             edges: Default::default(),
             start_locs: Vec::new(),
@@ -354,7 +354,7 @@ impl RectClip64 {
 
     /// Clear all internal state for reuse
     fn clear(&mut self) {
-        self.arena.clear();
+        self.outpt2_arena.clear();
         self.results.clear();
         for edge in &mut self.edges {
             edge.clear();
@@ -362,38 +362,48 @@ impl RectClip64 {
         self.start_locs.clear();
     }
 
+    #[inline]
+    fn outpt2(&self, i: Idx) -> &OutPt2 {
+        &self.outpt2_arena[i as usize]
+    }
+
+    #[inline]
+    fn outpt2_mut(&mut self, i: Idx) -> &mut OutPt2 {
+        &mut self.outpt2_arena[i as usize]
+    }
+
     /// Add a point to the current result path
     /// Direct port from clipper.rectclip.cpp line 317
-    fn add(&mut self, pt: Point64, start_new: bool) -> usize {
-        let curr_idx = self.results.len();
+    fn add(&mut self, pt: Point64, start_new: bool) -> Idx {
+        let curr_idx = self.results.len() as Idx;
         if curr_idx == 0 || start_new {
-            let new_idx = self.arena.len();
+            let new_idx = self.outpt2_arena.len() as Idx;
             let mut op = OutPt2::new(pt);
             op.next = new_idx;
             op.prev = new_idx;
-            self.arena.push(op);
-            self.results.push(Some(new_idx));
+            self.outpt2_arena.push(op);
+            self.results.push(new_idx);
             new_idx
         } else {
             let result_idx = curr_idx - 1;
-            let prev_op_idx = self.results[result_idx].unwrap();
-            if self.arena[prev_op_idx].pt == pt {
+            let prev_op_idx = *idx(&self.results, result_idx);
+            if self.outpt2(prev_op_idx).pt == pt {
                 return prev_op_idx;
             }
-            let new_idx = self.arena.len();
+            let new_idx = self.outpt2_arena.len() as Idx;
             let mut op = OutPt2::new(pt);
             op.owner_idx = result_idx;
 
             // Insert after prev_op in the circular list
-            let prev_next = self.arena[prev_op_idx].next;
+            let prev_next = self.outpt2(prev_op_idx).next;
             op.next = prev_next;
             op.prev = prev_op_idx;
-            self.arena.push(op);
+            self.outpt2_arena.push(op);
 
-            self.arena[prev_next].prev = new_idx;
-            self.arena[prev_op_idx].next = new_idx;
+            self.outpt2_mut(prev_next).prev = new_idx;
+            self.outpt2_mut(prev_op_idx).next = new_idx;
 
-            self.results[result_idx] = Some(new_idx);
+            *idx_mut(&mut self.results, result_idx) = new_idx;
             new_idx
         }
     }
@@ -524,64 +534,64 @@ impl RectClip64 {
 
     /// Unlink a node from the circular list, return the next node (or None if list becomes empty)
     /// Direct port from clipper.rectclip.cpp line 231
-    fn unlink_op(&mut self, op_idx: usize) -> Option<usize> {
-        let next = self.arena[op_idx].next;
+    fn unlink_op(&mut self, op_idx: Idx) -> Idx {
+        let next = self.outpt2(op_idx).next;
         if next == op_idx {
-            return None;
+            return NONE;
         }
-        let prev = self.arena[op_idx].prev;
-        self.arena[prev].next = next;
-        self.arena[next].prev = prev;
-        Some(next)
+        let prev = self.outpt2(op_idx).prev;
+        self.outpt2_mut(prev).next = next;
+        self.outpt2_mut(next).prev = prev;
+        next
     }
 
     /// Unlink a node from the circular list, return the prev node (or None if list becomes empty)
     /// Direct port from clipper.rectclip.cpp line 239
-    fn unlink_op_back(&mut self, op_idx: usize) -> Option<usize> {
-        let next = self.arena[op_idx].next;
+    fn unlink_op_back(&mut self, op_idx: Idx) -> Idx {
+        let next = self.outpt2(op_idx).next;
         if next == op_idx {
-            return None;
+            return NONE;
         }
-        let prev = self.arena[op_idx].prev;
-        self.arena[prev].next = next;
-        self.arena[next].prev = prev;
-        Some(prev)
+        let prev = self.outpt2(op_idx).prev;
+        self.outpt2_mut(prev).next = next;
+        self.outpt2_mut(next).prev = prev;
+        prev
     }
 
     /// Add a point to an edge list
     /// Direct port from clipper.rectclip.cpp line 280
-    fn add_to_edge(&mut self, edge_idx: usize, op_idx: usize) {
-        if self.arena[op_idx].edge_idx.is_some() {
+    fn add_to_edge(&mut self, edge_idx: Idx, op_idx: Idx) {
+        if self.outpt2(op_idx).edge_idx != NONE {
             return;
         }
-        self.arena[op_idx].edge_idx = Some(edge_idx);
-        self.edges[edge_idx].push(Some(op_idx));
+        self.outpt2_mut(op_idx).edge_idx = edge_idx;
+        idx_mut(&mut self.edges, edge_idx).push(op_idx);
     }
 
     /// Remove a point from its edge list
     /// Direct port from clipper.rectclip.cpp line 287
-    fn uncouple_edge(&mut self, op_idx: usize) {
-        let edge_idx = match self.arena[op_idx].edge_idx {
-            Some(idx) => idx,
-            None => return,
-        };
-        for i in 0..self.edges[edge_idx].len() {
-            if self.edges[edge_idx][i] == Some(op_idx) {
-                self.edges[edge_idx][i] = None;
-                break;
-            }
+    fn uncouple_edge(&mut self, op_idx: Idx) {
+        let edge_idx = idx(&self.outpt2_arena, op_idx).edge_idx;
+        if edge_idx == NONE {
+            return;
         }
-        self.arena[op_idx].edge_idx = None;
+        if let Some(idx) = idx_mut(&mut self.edges, edge_idx)
+            .iter_mut()
+            .find(|&&mut idx| idx == op_idx)
+        {
+            *idx = NONE;
+        }
+        self.outpt2_mut(op_idx).edge_idx = NONE;
     }
 
     /// Set new owner for all nodes in a circular list
     /// Direct port from clipper.rectclip.cpp line 302
-    fn set_new_owner(&mut self, op_idx: usize, new_idx: usize) {
-        self.arena[op_idx].owner_idx = new_idx;
-        let mut op2 = self.arena[op_idx].next;
+    fn set_new_owner(&mut self, op_idx: Idx, new_idx: Idx) {
+        self.outpt2_mut(op_idx).owner_idx = new_idx;
+        let mut op2 = self.outpt2(op_idx).next;
         while op2 != op_idx {
-            self.arena[op2].owner_idx = new_idx;
-            op2 = self.arena[op2].next;
+            self.outpt2_mut(op2).owner_idx = new_idx;
+            op2 = self.outpt2(op2).next;
         }
     }
 
@@ -725,11 +735,11 @@ impl RectClip64 {
                     && path1_contains_path2(path, &self.rect_as_path)
                 {
                     let is_clockwise_path = start_locs_are_clockwise(&self.start_locs);
-                    for j in 0..4usize {
+                    for j in 0..4 {
                         let k = if is_clockwise_path { j } else { 3 - j };
-                        let pt = self.rect_as_path[k];
+                        let pt = *idx(&self.rect_as_path, k);
                         self.add(pt, false);
-                        let results_0 = self.results[0].unwrap();
+                        let results_0 = self.results[0];
                         self.add_to_edge(k * 2, results_0);
                     }
                 }
@@ -762,44 +772,38 @@ impl RectClip64 {
     /// Check edges after internal execution
     /// Direct port from clipper.rectclip.cpp line 606
     fn check_edges(&mut self) {
-        for i in 0..self.results.len() {
-            let mut op_idx = match self.results[i] {
-                Some(idx) => idx,
-                None => continue,
+        for i in 0..(self.results.len() as Idx) {
+            let mut op_idx = *idx_mut(&mut self.results, i);
+            if op_idx == NONE {
+                continue;
             };
 
             // Remove collinear points
             let mut op2_idx = op_idx;
             loop {
-                let prev_idx = self.arena[op2_idx].prev;
-                let next_idx = self.arena[op2_idx].next;
-                let prev_pt = self.arena[prev_idx].pt;
-                let op2_pt = self.arena[op2_idx].pt;
-                let next_pt = self.arena[next_idx].pt;
+                let prev_idx = self.outpt2(op2_idx).prev;
+                let next_idx = self.outpt2(op2_idx).next;
+                let prev_pt = self.outpt2(prev_idx).pt;
+                let op2_pt = self.outpt2(op2_idx).pt;
+                let next_pt = self.outpt2(next_idx).pt;
 
                 if is_collinear(prev_pt, op2_pt, next_pt) {
                     if op2_idx == op_idx {
-                        match self.unlink_op_back(op2_idx) {
-                            Some(new_idx) => {
-                                op2_idx = new_idx;
-                                op_idx = self.arena[op2_idx].prev;
-                            }
-                            None => {
-                                op2_idx = usize::MAX; // signal break
-                                break;
-                            }
+                        op2_idx = self.unlink_op_back(op2_idx);
+                        if op2_idx != NONE {
+                            op_idx = self.outpt2(op2_idx).prev;
+                        } else {
+                            break;
                         }
                     } else {
-                        match self.unlink_op_back(op2_idx) {
-                            Some(new_idx) => op2_idx = new_idx,
-                            None => {
-                                op2_idx = usize::MAX;
-                                break;
-                            }
+                        op2_idx = self.unlink_op_back(op2_idx);
+                        if op2_idx != NONE {
+                        } else {
+                            break;
                         }
                     }
                 } else {
-                    op2_idx = self.arena[op2_idx].next;
+                    op2_idx = self.outpt2(op2_idx).next;
                 }
 
                 if op2_idx == op_idx {
@@ -807,35 +811,35 @@ impl RectClip64 {
                 }
             }
 
-            if op2_idx == usize::MAX {
-                self.results[i] = None;
+            if op2_idx == NONE {
+                *idx_mut(&mut self.results, i) = NONE;
                 continue;
             }
-            self.results[i] = Some(op_idx);
+            *idx_mut(&mut self.results, i) = op_idx;
 
             // Assign edges
-            let prev_idx = self.arena[op_idx].prev;
-            let mut edge_set1 = get_edges_for_pt(&self.arena[prev_idx].pt, &self.rect);
+            let prev_idx = self.outpt2(op_idx).prev;
+            let mut edge_set1 = get_edges_for_pt(&self.outpt2(prev_idx).pt, &self.rect);
             let mut op2_idx = op_idx;
             loop {
-                let edge_set2 = get_edges_for_pt(&self.arena[op2_idx].pt, &self.rect);
-                if edge_set2 != 0 && self.arena[op2_idx].edge_idx.is_none() {
+                let edge_set2 = get_edges_for_pt(&self.outpt2(op2_idx).pt, &self.rect);
+                if edge_set2 != 0 && self.outpt2(op2_idx).edge_idx == NONE {
                     let combined_set = edge_set1 & edge_set2;
-                    for j in 0..4i32 {
+                    for j in 0..4 {
                         if combined_set & (1 << j) != 0 {
-                            let prev_idx = self.arena[op2_idx].prev;
-                            let prev_pt = self.arena[prev_idx].pt;
-                            let op2_pt = self.arena[op2_idx].pt;
+                            let prev_idx = self.outpt2(op2_idx).prev;
+                            let prev_pt = self.outpt2(prev_idx).pt;
+                            let op2_pt = self.outpt2(op2_idx).pt;
                             if is_heading_clockwise(&prev_pt, &op2_pt, j) {
-                                self.add_to_edge(j as usize * 2, op2_idx);
+                                self.add_to_edge(j * 2, op2_idx);
                             } else {
-                                self.add_to_edge(j as usize * 2 + 1, op2_idx);
+                                self.add_to_edge(j * 2 + 1, op2_idx);
                             }
                         }
                     }
                 }
                 edge_set1 = edge_set2;
-                op2_idx = self.arena[op2_idx].next;
+                op2_idx = self.outpt2(op2_idx).next;
 
                 if op2_idx == op_idx {
                     break;
@@ -846,39 +850,41 @@ impl RectClip64 {
 
     /// Tidy edges by merging/splitting where cw and ccw edges overlap
     /// Direct port from clipper.rectclip.cpp line 665
-    fn tidy_edges(&mut self, idx: usize, cw_idx: usize, ccw_idx: usize) {
-        if self.edges[ccw_idx].is_empty() {
+    fn tidy_edges(&mut self, cur_idx: Idx, cw_idx: Idx, ccw_idx: Idx) {
+        if idx(&self.edges, ccw_idx).is_empty() {
             return;
         }
 
-        let is_horz = idx == 1 || idx == 3;
-        let cw_is_toward_larger = idx == 1 || idx == 2;
-        let mut i = 0usize;
-        let mut j = 0usize;
+        let is_horz = cur_idx == 1 || cur_idx == 3;
+        let cw_is_toward_larger = cur_idx == 1 || cur_idx == 2;
+        let mut i = 0;
+        let mut j = 0;
 
-        while i < self.edges[cw_idx].len() {
-            let p1_root = match self.edges[cw_idx][i] {
-                Some(idx) => idx,
-                None => {
-                    i += 1;
-                    j = 0;
-                    continue;
-                }
-            };
-
-            // Check if degenerate (next == prev)
-            if self.arena[p1_root].next == self.arena[p1_root].prev {
-                self.edges[cw_idx][i] = None;
+        while i < (idx_mut(&mut self.edges, cw_idx).len() as Idx) {
+            let p1_root = *idx(idx(&self.edges, cw_idx).as_slice(), i);
+            if p1_root == NONE {
                 i += 1;
                 j = 0;
                 continue;
             }
 
-            let j_lim = self.edges[ccw_idx].len();
+            // Check if degenerate (next == prev)
+            if self.outpt2(p1_root).next == self.outpt2(p1_root).prev {
+                *idx_mut(&mut *idx_mut(&mut self.edges, cw_idx), i) = NONE;
+                i += 1;
+                j = 0;
+                continue;
+            }
+
+            let j_lim = idx(&self.edges, ccw_idx).len() as Idx;
             while j < j_lim {
-                match self.edges[ccw_idx][j] {
-                    Some(idx) if self.arena[idx].next != self.arena[idx].prev => break,
-                    _ => j += 1,
+                let idx = *idx(idx(&self.edges, ccw_idx).as_slice(), j);
+                if idx != NONE {
+                    if self.outpt2(idx).next != self.outpt2(idx).prev {
+                        break;
+                    } else {
+                        j += 1
+                    }
                 }
             }
 
@@ -888,25 +894,25 @@ impl RectClip64 {
                 continue;
             }
 
-            let p2_root = self.edges[ccw_idx][j].unwrap();
+            let p2_root = *idx(idx(&self.edges, ccw_idx).as_slice(), j);
 
             let (p1, p1a, p2, p2a);
             if cw_is_toward_larger {
-                p1 = self.arena[p1_root].prev;
+                p1 = self.outpt2(p1_root).prev;
                 p1a = p1_root;
                 p2 = p2_root;
-                p2a = self.arena[p2_root].prev;
+                p2a = self.outpt2(p2_root).prev;
             } else {
                 p1 = p1_root;
-                p1a = self.arena[p1_root].prev;
-                p2 = self.arena[p2_root].prev;
+                p1a = self.outpt2(p1_root).prev;
+                p2 = self.outpt2(p2_root).prev;
                 p2a = p2_root;
             }
 
-            let p1_pt = self.arena[p1].pt;
-            let p1a_pt = self.arena[p1a].pt;
-            let p2_pt = self.arena[p2].pt;
-            let p2a_pt = self.arena[p2a].pt;
+            let p1_pt = self.outpt2(p1).pt;
+            let p1a_pt = self.outpt2(p1a).pt;
+            let p2_pt = self.outpt2(p2).pt;
+            let p2a_pt = self.outpt2(p2a).pt;
 
             if (is_horz && !has_horz_overlap(&p1_pt, &p1a_pt, &p2_pt, &p2a_pt))
                 || (!is_horz && !has_vert_overlap(&p1_pt, &p1a_pt, &p2_pt, &p2a_pt))
@@ -916,31 +922,31 @@ impl RectClip64 {
             }
 
             // To get here we're either splitting or rejoining
-            let is_rejoining = self.arena[p1_root].owner_idx != self.arena[p2_root].owner_idx;
+            let is_rejoining = self.outpt2(p1_root).owner_idx != self.outpt2(p2_root).owner_idx;
 
             if is_rejoining {
-                let p2_owner = self.arena[p2].owner_idx;
-                let p1_owner = self.arena[p1].owner_idx;
-                self.results[p2_owner] = None;
+                let p2_owner = self.outpt2(p2).owner_idx;
+                let p1_owner = self.outpt2(p1).owner_idx;
+                *idx_mut(&mut self.results, p2_owner) = NONE;
                 self.set_new_owner(p2, p1_owner);
             }
 
             // Do the split or re-join
             if cw_is_toward_larger {
-                self.arena[p1].next = p2;
-                self.arena[p2].prev = p1;
-                self.arena[p1a].prev = p2a;
-                self.arena[p2a].next = p1a;
+                self.outpt2_mut(p1).next = p2;
+                self.outpt2_mut(p2).prev = p1;
+                self.outpt2_mut(p1a).prev = p2a;
+                self.outpt2_mut(p2a).next = p1a;
             } else {
-                self.arena[p1].prev = p2;
-                self.arena[p2].next = p1;
-                self.arena[p1a].next = p2a;
-                self.arena[p2a].prev = p1a;
+                self.outpt2_mut(p1).prev = p2;
+                self.outpt2_mut(p2).next = p1;
+                self.outpt2_mut(p1a).next = p2a;
+                self.outpt2_mut(p2a).prev = p1a;
             }
 
             if !is_rejoining {
-                let new_idx = self.results.len();
-                self.results.push(Some(p1a));
+                let new_idx = self.results.len() as Idx;
+                self.results.push(p1a);
                 self.set_new_owner(p1a, new_idx);
             }
 
@@ -953,78 +959,78 @@ impl RectClip64 {
                 op2 = p2a;
             }
 
-            let op_owner = self.arena[op].owner_idx;
-            let op2_owner = self.arena[op2].owner_idx;
-            self.results[op_owner] = Some(op);
-            self.results[op2_owner] = Some(op2);
+            let op_owner = self.outpt2(op).owner_idx;
+            let op2_owner = self.outpt2(op2).owner_idx;
+            *idx_mut(&mut self.results, op_owner) = op;
+            *idx_mut(&mut self.results, op2_owner) = op2;
 
             // Get ready for the next loop
             let (op_is_larger, op2_is_larger) = if is_horz {
-                let op_prev = self.arena[op].prev;
-                let op2_prev = self.arena[op2].prev;
+                let op_prev = self.outpt2(op).prev;
+                let op2_prev = self.outpt2(op2).prev;
                 (
-                    self.arena[op].pt.x > self.arena[op_prev].pt.x,
-                    self.arena[op2].pt.x > self.arena[op2_prev].pt.x,
+                    self.outpt2(op).pt.x > self.outpt2(op_prev).pt.x,
+                    self.outpt2(op2).pt.x > self.outpt2(op2_prev).pt.x,
                 )
             } else {
-                let op_prev = self.arena[op].prev;
-                let op2_prev = self.arena[op2].prev;
+                let op_prev = self.outpt2(op).prev;
+                let op2_prev = self.outpt2(op2).prev;
                 (
-                    self.arena[op].pt.y > self.arena[op_prev].pt.y,
-                    self.arena[op2].pt.y > self.arena[op2_prev].pt.y,
+                    self.outpt2(op).pt.y > self.outpt2(op_prev).pt.y,
+                    self.outpt2(op2).pt.y > self.outpt2(op2_prev).pt.y,
                 )
             };
 
-            let op_next = self.arena[op].next;
-            let op_prev = self.arena[op].prev;
-            let op2_next = self.arena[op2].next;
-            let op2_prev = self.arena[op2].prev;
+            let op_next = self.outpt2(op).next;
+            let op_prev = self.outpt2(op).prev;
+            let op2_next = self.outpt2(op2).next;
+            let op2_prev = self.outpt2(op2).prev;
 
-            if (op_next == op_prev) || (self.arena[op].pt == self.arena[op_prev].pt) {
+            if (op_next == op_prev) || (self.outpt2(op).pt == self.outpt2(op_prev).pt) {
                 if op2_is_larger == cw_is_toward_larger {
-                    self.edges[cw_idx][i] = Some(op2);
-                    self.edges[ccw_idx][j] = None;
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = op2;
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = NONE;
                     j += 1;
                 } else {
-                    self.edges[ccw_idx][j] = Some(op2);
-                    self.edges[cw_idx][i] = None;
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = op2;
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = NONE;
                     i += 1;
                 }
-            } else if (op2_next == op2_prev) || (self.arena[op2].pt == self.arena[op2_prev].pt) {
+            } else if (op2_next == op2_prev) || (self.outpt2(op2).pt == self.outpt2(op2_prev).pt) {
                 if op_is_larger == cw_is_toward_larger {
-                    self.edges[cw_idx][i] = Some(op);
-                    self.edges[ccw_idx][j] = None;
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = op;
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = NONE;
                     j += 1;
                 } else {
-                    self.edges[ccw_idx][j] = Some(op);
-                    self.edges[cw_idx][i] = None;
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = op;
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = NONE;
                     i += 1;
                 }
             } else if op_is_larger == op2_is_larger {
                 if op_is_larger == cw_is_toward_larger {
-                    self.edges[cw_idx][i] = Some(op);
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = op;
                     self.uncouple_edge(op2);
                     self.add_to_edge(cw_idx, op2);
-                    self.edges[ccw_idx][j] = None;
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = NONE;
                     j += 1;
                 } else {
-                    self.edges[cw_idx][i] = None;
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = NONE;
                     i += 1;
-                    self.edges[ccw_idx][j] = Some(op2);
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = op2;
                     self.uncouple_edge(op);
                     self.add_to_edge(ccw_idx, op);
                     j = 0;
                 }
             } else {
                 if op_is_larger == cw_is_toward_larger {
-                    self.edges[cw_idx][i] = Some(op);
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = op;
                 } else {
-                    self.edges[ccw_idx][j] = Some(op);
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = op;
                 }
                 if op2_is_larger == cw_is_toward_larger {
-                    self.edges[cw_idx][i] = Some(op2);
+                    *idx_mut(idx_mut(&mut self.edges, cw_idx).as_mut_slice(), i) = op2;
                 } else {
-                    self.edges[ccw_idx][j] = Some(op2);
+                    *idx_mut(idx_mut(&mut self.edges, ccw_idx).as_mut_slice(), j) = op2;
                 }
             }
         }
@@ -1032,55 +1038,55 @@ impl RectClip64 {
 
     /// Extract a path from the circular linked list
     /// Direct port from clipper.rectclip.cpp line 843
-    fn get_path(&mut self, op_idx_ref: &mut Option<usize>) -> Path64 {
-        let op_start = match *op_idx_ref {
-            Some(idx) => idx,
-            None => return Path64::new(),
-        };
+    fn get_path(&mut self, op_idx_ref: &mut Idx) -> Path64 {
+        let op_start = *op_idx_ref;
+        if op_start == NONE {
+            return Path64::new();
+        }
 
         // Check if degenerate
-        if self.arena[op_start].next == self.arena[op_start].prev {
-            *op_idx_ref = None;
+        if self.outpt2(op_start).next == self.outpt2(op_start).prev {
+            *op_idx_ref = NONE;
             return Path64::new();
         }
 
         // Remove collinear points
         let mut op_idx = op_start;
-        let mut op2_idx = self.arena[op_start].next;
+        let mut op2_idx = self.outpt2(op_start).next;
         while op2_idx != op_idx {
-            let prev_idx = self.arena[op2_idx].prev;
-            let next_idx = self.arena[op2_idx].next;
-            let prev_pt = self.arena[prev_idx].pt;
-            let op2_pt = self.arena[op2_idx].pt;
-            let next_pt = self.arena[next_idx].pt;
+            let prev_idx = self.outpt2(op2_idx).prev;
+            let next_idx = self.outpt2(op2_idx).next;
+            let prev_pt = self.outpt2(prev_idx).pt;
+            let op2_pt = self.outpt2(op2_idx).pt;
+            let next_pt = self.outpt2(next_idx).pt;
 
             if is_collinear(prev_pt, op2_pt, next_pt) {
-                op_idx = self.arena[op2_idx].prev;
-                match self.unlink_op(op2_idx) {
-                    Some(new_idx) => op2_idx = new_idx,
-                    None => {
-                        *op_idx_ref = None;
-                        return Path64::new();
-                    }
+                op_idx = self.outpt2(op2_idx).prev;
+                let new_idx = self.unlink_op(op2_idx);
+                if new_idx != NONE {
+                    op2_idx = new_idx;
+                } else {
+                    *op_idx_ref = NONE;
+                    return Path64::new();
                 }
             } else {
-                op2_idx = self.arena[op2_idx].next;
+                op2_idx = self.outpt2(op2_idx).next;
             }
         }
 
-        *op_idx_ref = Some(op2_idx);
-        if self.arena[op2_idx].next == self.arena[op2_idx].prev {
-            *op_idx_ref = None;
+        *op_idx_ref = op2_idx;
+        if self.outpt2(op2_idx).next == self.outpt2(op2_idx).prev {
+            *op_idx_ref = NONE;
             return Path64::new();
         }
 
         let mut result = Path64::new();
         let start = op2_idx;
-        result.push(self.arena[start].pt);
-        let mut curr = self.arena[start].next;
+        result.push(self.outpt2(start).pt);
+        let mut curr = self.outpt2(start).next;
         while curr != start {
-            result.push(self.arena[curr].pt);
-            curr = self.arena[curr].next;
+            result.push(self.outpt2(curr).pt);
+            curr = self.outpt2(curr).next;
         }
         result
     }
@@ -1107,7 +1113,7 @@ impl RectClip64 {
 
             self.execute_internal(path);
             self.check_edges();
-            for edge_i in 0..4usize {
+            for edge_i in 0..4 {
                 self.tidy_edges(edge_i, edge_i * 2, edge_i * 2 + 1);
             }
 
@@ -1139,8 +1145,8 @@ pub struct RectClipLines64 {
     rect_as_path: Path64,
     #[allow(dead_code)]
     rect_mp: Point64,
-    arena: Vec<OutPt2>,
-    results: Vec<Option<usize>>,
+    outpt2_arena: Vec<OutPt2>,
+    results: Vec<Idx>,
     start_locs: Vec<Location>,
 }
 
@@ -1154,48 +1160,58 @@ impl RectClipLines64 {
             rect,
             rect_as_path,
             rect_mp,
-            arena: Vec::new(),
+            outpt2_arena: Vec::new(),
             results: Vec::new(),
             start_locs: Vec::new(),
         }
     }
 
+    #[inline]
+    fn outpt2(&self, i: Idx) -> &OutPt2 {
+        &self.outpt2_arena[i as usize]
+    }
+
+    #[inline]
+    fn outpt2_mut(&mut self, i: Idx) -> &mut OutPt2 {
+        &mut self.outpt2_arena[i as usize]
+    }
+
     fn clear(&mut self) {
-        self.arena.clear();
+        self.outpt2_arena.clear();
         self.results.clear();
         self.start_locs.clear();
     }
 
     /// Add a point (same logic as RectClip64::Add)
-    fn add(&mut self, pt: Point64, start_new: bool) -> usize {
-        let curr_idx = self.results.len();
+    fn add(&mut self, pt: Point64, start_new: bool) -> Idx {
+        let curr_idx = self.results.len() as Idx;
         if curr_idx == 0 || start_new {
-            let new_idx = self.arena.len();
+            let new_idx = self.outpt2_arena.len() as Idx;
             let mut op = OutPt2::new(pt);
             op.next = new_idx;
             op.prev = new_idx;
-            self.arena.push(op);
-            self.results.push(Some(new_idx));
+            self.outpt2_arena.push(op);
+            self.results.push(new_idx);
             new_idx
         } else {
             let result_idx = curr_idx - 1;
-            let prev_op_idx = self.results[result_idx].unwrap();
-            if self.arena[prev_op_idx].pt == pt {
+            let prev_op_idx = *idx(&self.results, result_idx);
+            if self.outpt2(prev_op_idx).pt == pt {
                 return prev_op_idx;
             }
-            let new_idx = self.arena.len();
+            let new_idx = self.outpt2_arena.len() as Idx;
             let mut op = OutPt2::new(pt);
             op.owner_idx = result_idx;
 
-            let prev_next = self.arena[prev_op_idx].next;
+            let prev_next = self.outpt2(prev_op_idx).next;
             op.next = prev_next;
             op.prev = prev_op_idx;
-            self.arena.push(op);
+            self.outpt2_arena.push(op);
 
-            self.arena[prev_next].prev = new_idx;
-            self.arena[prev_op_idx].next = new_idx;
+            self.outpt2_mut(prev_next).prev = new_idx;
+            self.outpt2_mut(prev_op_idx).next = new_idx;
 
-            self.results[result_idx] = Some(new_idx);
+            *idx_mut(&mut self.results, result_idx) = new_idx;
             new_idx
         }
     }
@@ -1374,24 +1390,24 @@ impl RectClipLines64 {
 
     /// Extract a path from the circular linked list (line version)
     /// Direct port from clipper.rectclip.cpp line 1012
-    fn get_path(&self, op_idx_ref: &mut Option<usize>) -> Path64 {
-        let op_start = match *op_idx_ref {
-            Some(idx) => idx,
-            None => return Path64::new(),
-        };
+    fn get_path(&self, op_idx_ref: &mut Idx) -> Path64 {
+        let op_start = *op_idx_ref;
+        if op_start == NONE {
+            return Path64::new();
+        }
 
-        if self.arena[op_start].next == op_start {
+        if self.outpt2(op_start).next == op_start {
             return Path64::new();
         }
 
         // Start at path beginning (next from start sentinel)
-        let start = self.arena[op_start].next;
+        let start = self.outpt2(op_start).next;
         let mut result = Path64::new();
-        result.push(self.arena[start].pt);
-        let mut op2 = self.arena[start].next;
+        result.push(self.outpt2(start).pt);
+        let mut op2 = self.outpt2(start).next;
         while op2 != start {
-            result.push(self.arena[op2].pt);
-            op2 = self.arena[op2].next;
+            result.push(self.outpt2(op2).pt);
+            op2 = self.outpt2(op2).next;
         }
         result
     }
