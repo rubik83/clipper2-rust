@@ -28,7 +28,7 @@ pub fn is_hot_edge(e: &Active) -> bool {
 /// Direct port from clipper.engine.cpp line 73
 #[inline]
 pub fn is_open_active(e: &Active, minima_list: &[LocalMinima]) -> bool {
-    minima_list[e.local_min as usize].is_open
+    idx(minima_list, e.local_min).is_open
 }
 
 /// Check if a vertex is an open end
@@ -42,7 +42,7 @@ pub fn is_open_end_vertex(v: &Vertex) -> bool {
 /// Direct port from clipper.engine.cpp line 87
 #[inline]
 pub fn is_open_end_active(e: &Active, vertex_arena: &[Vertex]) -> bool {
-    is_open_end_vertex(&vertex_arena[e.vertex_top as usize])
+    is_open_end_vertex(idx(vertex_arena, e.vertex_top))
 }
 
 /// Calculate slope dx for an edge defined by two points
@@ -97,14 +97,14 @@ pub fn is_heading_left_horz(e: &Active) -> bool {
 /// Direct port from clipper.engine.cpp line 162
 #[inline]
 pub fn get_poly_type(e: &Active, minima_list: &[LocalMinima]) -> PathType {
-    minima_list[e.local_min as usize].polytype
+    idx(minima_list, e.local_min).polytype
 }
 
 /// Check if two active edges are the same polytype
 /// Direct port from clipper.engine.cpp line 167
 #[inline]
 pub fn is_same_poly_type(e1: &Active, e2: &Active, minima_list: &[LocalMinima]) -> bool {
-    minima_list[e1.local_min as usize].polytype == minima_list[e2.local_min as usize].polytype
+    idx(minima_list, e1.local_min).polytype == idx(minima_list, e2.local_min).polytype
 }
 
 /// Set dx for an active edge from its bot/top points
@@ -119,9 +119,9 @@ pub fn set_dx(e: &mut Active) {
 #[inline]
 pub fn next_vertex(e: &Active, vertex_arena: &[Vertex]) -> Idx {
     if e.wind_dx > 0 {
-        vertex_arena[e.vertex_top as usize].next
+        idx(vertex_arena, e.vertex_top).next
     } else {
-        vertex_arena[e.vertex_top as usize].prev
+        idx(vertex_arena, e.vertex_top).prev
     }
 }
 
@@ -130,11 +130,11 @@ pub fn next_vertex(e: &Active, vertex_arena: &[Vertex]) -> Idx {
 #[inline]
 pub fn prev_prev_vertex(ae: &Active, vertex_arena: &[Vertex]) -> Idx {
     if ae.wind_dx > 0 {
-        let prev = vertex_arena[ae.vertex_top as usize].prev;
-        vertex_arena[prev as usize].prev
+        let prev = idx(vertex_arena, ae.vertex_top).prev;
+        idx(vertex_arena, prev).prev
     } else {
-        let next = vertex_arena[ae.vertex_top as usize].next;
-        vertex_arena[next as usize].next
+        let next = idx(vertex_arena, ae.vertex_top).next;
+        idx(vertex_arena, next).next
     }
 }
 
@@ -149,7 +149,7 @@ pub fn is_maxima_vertex(v: &Vertex) -> bool {
 /// Direct port from clipper.engine.cpp line 221
 #[inline]
 pub fn is_maxima_active(e: &Active, vertex_arena: &[Vertex]) -> bool {
-    is_maxima_vertex(&vertex_arena[e.vertex_top as usize])
+    is_maxima_vertex(idx(vertex_arena, e.vertex_top))
 }
 
 /// Count points in an OutPt circular list
@@ -158,7 +158,7 @@ pub fn point_count(op_start: Idx, outpt_arena: &[OutPt]) -> i32 {
     let mut op2 = op_start;
     let mut cnt = 0;
     loop {
-        op2 = outpt_arena[op2 as usize].next;
+        op2 = idx(outpt_arena, op2).next;
         cnt += 1;
         if op2 == op_start {
             break;
@@ -173,7 +173,7 @@ pub fn point_count(op_start: Idx, outpt_arena: &[OutPt]) -> i32 {
 pub fn is_invalid_path(op: Option<Idx>, outpt_arena: &[OutPt]) -> bool {
     match op {
         None => true,
-        Some(idx) => outpt_arena[idx as usize].next == idx,
+        Some(cur_idx) => idx(outpt_arena, cur_idx).next == cur_idx,
     }
 }
 
@@ -183,10 +183,10 @@ pub fn area_outpt(op_start: Idx, outpt_arena: &[OutPt]) -> f64 {
     let mut result = 0.0;
     let mut op2 = op_start;
     loop {
-        let prev_idx = outpt_arena[op2 as usize].prev;
-        result += (outpt_arena[prev_idx as usize].pt.y + outpt_arena[op2 as usize].pt.y) as f64
-            * (outpt_arena[prev_idx as usize].pt.x - outpt_arena[op2 as usize].pt.x) as f64;
-        op2 = outpt_arena[op2 as usize].next;
+        let prev_idx = idx(outpt_arena, op2).prev;
+        result += (idx(outpt_arena, prev_idx).pt.y + idx(outpt_arena, op2).pt.y) as f64
+            * (idx(outpt_arena, prev_idx).pt.x - idx(outpt_arena, op2).pt.x) as f64;
+        op2 = idx(outpt_arena, op2).next;
         if op2 == op_start {
             break;
         }
@@ -208,11 +208,11 @@ pub fn area_triangle(pt1: Point64, pt2: Point64, pt3: Point64) -> f64 {
 pub fn reverse_out_pts(op_start: Idx, outpt_arena: &mut [OutPt]) {
     let mut op1 = op_start;
     loop {
-        std::mem::swap(
-            &mut outpt_arena[op1 as usize].next,
-            &mut outpt_arena[op1 as usize].prev,
-        );
-        op1 = outpt_arena[op1 as usize].prev; // advance to original next (now in prev)
+        {
+            let op = idx_mut(outpt_arena, op1);
+            std::mem::swap(&mut op.next, &mut op.prev);
+        }
+        op1 = idx(outpt_arena, op1).prev; // advance to original next (now in prev)
         if op1 == op_start {
             break;
         }
@@ -232,12 +232,12 @@ pub fn intersect_list_sort(a: &IntersectNode, b: &IntersectNode) -> std::cmp::Or
 /// Get the maxima pair for an active edge
 /// Direct port from clipper.engine.cpp line 254
 pub fn get_maxima_pair(e: &Active, active_arena: &[Active]) -> Idx {
-    let mut idx = e.next_in_ael;
-    while idx != NONE {
-        if active_arena[idx as usize].vertex_top == e.vertex_top {
-            return idx;
+    let mut cur_idx = e.next_in_ael;
+    while cur_idx != NONE {
+        if idx(active_arena, cur_idx).vertex_top == e.vertex_top {
+            return cur_idx;
         }
-        idx = active_arena[idx as usize].next_in_ael;
+        cur_idx = idx(active_arena, cur_idx).next_in_ael;
     }
     NONE
 }
@@ -247,29 +247,23 @@ pub fn get_maxima_pair(e: &Active, active_arena: &[Active]) -> Idx {
 pub fn get_curr_y_maxima_vertex_open(e: &Active, vertex_arena: &[Vertex]) -> Option<Idx> {
     let mut result = e.vertex_top;
     if e.wind_dx > 0 {
-        while vertex_arena[(vertex_arena[result as usize].next) as usize]
-            .pt
-            .y
-            == vertex_arena[result as usize].pt.y
-            && (vertex_arena[result as usize].flags
-                & (VertexFlags::OPEN_END | VertexFlags::LOCAL_MAX))
+        while idx(vertex_arena, idx(vertex_arena, result).next).pt.y
+            == idx(vertex_arena, result).pt.y
+            && (idx(vertex_arena, result).flags & (VertexFlags::OPEN_END | VertexFlags::LOCAL_MAX))
                 == VertexFlags::EMPTY
         {
-            result = vertex_arena[result as usize].next;
+            result = idx(vertex_arena, result).next;
         }
     } else {
-        while vertex_arena[(vertex_arena[result as usize].prev) as usize]
-            .pt
-            .y
-            == vertex_arena[result as usize].pt.y
-            && (vertex_arena[result as usize].flags
-                & (VertexFlags::OPEN_END | VertexFlags::LOCAL_MAX))
+        while idx(vertex_arena, idx(vertex_arena, result).prev).pt.y
+            == idx(vertex_arena, result).pt.y
+            && (idx(vertex_arena, result).flags & (VertexFlags::OPEN_END | VertexFlags::LOCAL_MAX))
                 == VertexFlags::EMPTY
         {
-            result = vertex_arena[result as usize].prev;
+            result = idx(vertex_arena, result).prev;
         }
     }
-    if is_maxima_vertex(&vertex_arena[result as usize]) {
+    if is_maxima_vertex(idx(vertex_arena, result)) {
         Some(result)
     } else {
         None
@@ -281,23 +275,19 @@ pub fn get_curr_y_maxima_vertex_open(e: &Active, vertex_arena: &[Vertex]) -> Opt
 pub fn get_curr_y_maxima_vertex(e: &Active, vertex_arena: &[Vertex]) -> Option<Idx> {
     let mut result = e.vertex_top;
     if e.wind_dx > 0 {
-        while vertex_arena[(vertex_arena[result as usize].next) as usize]
-            .pt
-            .y
-            == vertex_arena[result as usize].pt.y
+        while idx(vertex_arena, idx(vertex_arena, result).next).pt.y
+            == idx(vertex_arena, result).pt.y
         {
-            result = vertex_arena[result as usize].next;
+            result = idx(vertex_arena, result).next;
         }
     } else {
-        while vertex_arena[(vertex_arena[result as usize].prev) as usize]
-            .pt
-            .y
-            == vertex_arena[result as usize].pt.y
+        while idx(vertex_arena, idx(vertex_arena, result).prev).pt.y
+            == idx(vertex_arena, result).pt.y
         {
-            result = vertex_arena[result as usize].prev;
+            result = idx(vertex_arena, result).prev;
         }
     }
-    if is_maxima_vertex(&vertex_arena[result as usize]) {
+    if is_maxima_vertex(idx(vertex_arena, result)) {
         Some(result)
     } else {
         None
@@ -318,9 +308,9 @@ pub fn is_valid_ael_order(
 
     // get the turning direction: resident.top, newcomer.bot, newcomer.top
     let i = cross_product_sign(
-        vertex_arena[resident.vertex_top as usize].pt,
+        idx(vertex_arena, resident.vertex_top).pt,
         newcomer.bot,
-        vertex_arena[newcomer.vertex_top as usize].pt,
+        idx(vertex_arena, newcomer.vertex_top).pt,
     );
     if i != 0 {
         return i < 0;
@@ -330,24 +320,22 @@ pub fn is_valid_ael_order(
     // for starting open paths, place them according to
     // the direction they're about to turn
     if !is_maxima_active(resident, vertex_arena)
-        && vertex_arena[resident.vertex_top as usize].pt.y
-            > vertex_arena[newcomer.vertex_top as usize].pt.y
+        && idx(vertex_arena, resident.vertex_top).pt.y > idx(vertex_arena, newcomer.vertex_top).pt.y
     {
         let nv = next_vertex(resident, vertex_arena);
         return cross_product_sign(
             newcomer.bot,
-            vertex_arena[resident.vertex_top as usize].pt,
-            vertex_arena[nv as usize].pt,
+            idx(vertex_arena, resident.vertex_top).pt,
+            idx(vertex_arena, nv).pt,
         ) <= 0;
     } else if !is_maxima_active(newcomer, vertex_arena)
-        && vertex_arena[newcomer.vertex_top as usize].pt.y
-            > vertex_arena[resident.vertex_top as usize].pt.y
+        && idx(vertex_arena, newcomer.vertex_top).pt.y > idx(vertex_arena, resident.vertex_top).pt.y
     {
         let nv = next_vertex(newcomer, vertex_arena);
         return cross_product_sign(
             newcomer.bot,
-            vertex_arena[newcomer.vertex_top as usize].pt,
-            vertex_arena[nv as usize].pt,
+            idx(vertex_arena, newcomer.vertex_top).pt,
+            idx(vertex_arena, nv).pt,
         ) >= 0;
     }
 
@@ -355,7 +343,7 @@ pub fn is_valid_ael_order(
     let newcomer_is_left = newcomer.is_left_bound;
 
     if resident.bot.y != y
-        || vertex_arena[(minima_list[resident.local_min as usize].vertex) as usize]
+        || idx(vertex_arena, idx(minima_list, resident.local_min).vertex)
             .pt
             .y
             != y
@@ -364,9 +352,9 @@ pub fn is_valid_ael_order(
     } else if resident.is_left_bound != newcomer_is_left {
         newcomer_is_left
     } else if is_collinear(
-        vertex_arena[(prev_prev_vertex(resident, vertex_arena)) as usize].pt,
+        idx(vertex_arena, prev_prev_vertex(resident, vertex_arena)).pt,
         resident.bot,
-        vertex_arena[resident.vertex_top as usize].pt,
+        idx(vertex_arena, resident.vertex_top).pt,
     ) {
         true
     } else {
@@ -374,9 +362,9 @@ pub fn is_valid_ael_order(
         let ppv_r = prev_prev_vertex(resident, vertex_arena);
         let ppv_n = prev_prev_vertex(newcomer, vertex_arena);
         (cross_product_sign(
-            vertex_arena[ppv_r as usize].pt,
+            idx(vertex_arena, ppv_r).pt,
             newcomer.bot,
-            vertex_arena[ppv_n as usize].pt,
+            idx(vertex_arena, ppv_n).pt,
         ) > 0)
             == newcomer_is_left
     }
@@ -392,13 +380,13 @@ pub fn get_clean_path(op_start: Idx, outpt_arena: &[OutPt]) -> Path64 {
     let mut result = Path64::new();
     let mut op = op_start;
     loop {
-        let prev = outpt_arena[op as usize].prev;
-        let next = outpt_arena[op as usize].next;
-        if outpt_arena[op as usize].pt == outpt_arena[prev as usize].pt
+        let prev = idx(outpt_arena, op).prev;
+        let next = idx(outpt_arena, op).next;
+        if idx(outpt_arena, op).pt == idx(outpt_arena, prev).pt
             || is_collinear(
-                outpt_arena[prev as usize].pt,
-                outpt_arena[op as usize].pt,
-                outpt_arena[next as usize].pt,
+                idx(outpt_arena, prev).pt,
+                idx(outpt_arena, op).pt,
+                idx(outpt_arena, next).pt,
             )
         {
             op = next;
@@ -407,7 +395,7 @@ pub fn get_clean_path(op_start: Idx, outpt_arena: &[OutPt]) -> Path64 {
             }
             continue;
         }
-        result.push(outpt_arena[op as usize].pt);
+        result.push(idx(outpt_arena, op).pt);
         op = next;
         if op == op_start {
             break;
@@ -423,13 +411,13 @@ pub fn get_clean_path(op_start: Idx, outpt_arena: &[OutPt]) -> Path64 {
 
 /// Get the real (non-disposed) OutRec by following owner chain
 /// Direct port from clipper.engine.cpp GetRealOutRec (line 412)
-pub fn get_real_outrec(outrec_list: &[OutRec], idx: Idx) -> Idx {
-    let mut cur = idx;
+pub fn get_real_outrec(outrec_list: &[OutRec], outrec_idx: Idx) -> Idx {
+    let mut cur = outrec_idx;
     while cur != NONE {
-        if outrec_list[cur as usize].pts != NONE {
+        if idx(outrec_list, cur).pts != NONE {
             return cur;
         }
-        cur = outrec_list[cur as usize].owner;
+        cur = idx(outrec_list, cur).owner;
     }
     NONE
 }
@@ -437,12 +425,12 @@ pub fn get_real_outrec(outrec_list: &[OutRec], idx: Idx) -> Idx {
 /// Check if an owner is valid (not circular)
 /// Direct port from clipper.engine.cpp IsValidOwner (line 418)
 pub fn is_valid_owner(outrec_list: &[OutRec], outrec_idx: Idx, test_owner_idx: Idx) -> bool {
-    let mut idx = test_owner_idx;
-    while idx != NONE {
-        if idx == outrec_idx {
+    let mut cur_idx = test_owner_idx;
+    while cur_idx != NONE {
+        if cur_idx == outrec_idx {
             return false;
         }
-        idx = outrec_list[idx as usize].owner;
+        cur_idx = idx(outrec_list, cur_idx).owner;
     }
     true
 }
@@ -457,37 +445,31 @@ pub fn pts_really_close(pt1: Point64, pt2: Point64) -> bool {
 /// Check if an OutPt triangle is very small
 /// Direct port from clipper.engine.cpp IsVerySmallTriangle (line 441)
 pub fn is_very_small_triangle(op_idx: Idx, outpt_arena: &[OutPt]) -> bool {
-    let next = outpt_arena[op_idx as usize].next;
-    let prev = outpt_arena[op_idx as usize].prev;
-    if outpt_arena[next as usize].next != prev {
+    let next = idx(outpt_arena, op_idx).next;
+    let prev = idx(outpt_arena, op_idx).prev;
+    if idx(outpt_arena, next).next != prev {
         return false;
     }
-    pts_really_close(outpt_arena[prev as usize].pt, outpt_arena[next as usize].pt)
-        || pts_really_close(
-            outpt_arena[op_idx as usize].pt,
-            outpt_arena[next as usize].pt,
-        )
-        || pts_really_close(
-            outpt_arena[op_idx as usize].pt,
-            outpt_arena[prev as usize].pt,
-        )
+    pts_really_close(idx(outpt_arena, prev).pt, idx(outpt_arena, next).pt)
+        || pts_really_close(idx(outpt_arena, op_idx).pt, idx(outpt_arena, next).pt)
+        || pts_really_close(idx(outpt_arena, op_idx).pt, idx(outpt_arena, prev).pt)
 }
 
 /// Check if a closed path is valid
 /// Direct port from clipper.engine.cpp IsValidClosedPath (line 449)
-pub fn is_valid_closed_path(idx: Idx, outpt_arena: &[OutPt]) -> bool {
-    if idx == NONE {
+pub fn is_valid_closed_path(cur_idx: Idx, outpt_arena: &[OutPt]) -> bool {
+    if cur_idx == NONE {
         return false;
     }
-    let next = outpt_arena[idx as usize].next;
-    if next == idx {
+    let next = idx(outpt_arena, cur_idx).next;
+    if next == cur_idx {
         return false;
     }
-    let prev = outpt_arena[idx as usize].prev;
+    let prev = idx(outpt_arena, cur_idx).prev;
     if next == prev {
         return false;
     }
-    !is_very_small_triangle(idx, outpt_arena)
+    !is_very_small_triangle(cur_idx, outpt_arena)
 }
 
 /// Check if the hot edge is ascending (front edge of its outrec)
@@ -498,9 +480,9 @@ pub fn outrec_is_ascending(
     outrec_list: &[OutRec],
     active_arena: &[Active],
 ) -> bool {
-    let or_idx = active_arena[hot_edge_idx as usize].outrec;
+    let or_idx = idx(active_arena, hot_edge_idx).outrec;
     if or_idx != NONE {
-        outrec_list[or_idx as usize].front_edge == hot_edge_idx
+        idx(outrec_list, or_idx).front_edge == hot_edge_idx
     } else {
         false
     }
@@ -510,15 +492,15 @@ pub fn outrec_is_ascending(
 /// Direct port from clipper.engine.cpp SwapFrontBackSides (line 460)
 pub fn swap_front_back_sides(outrec: &mut OutRec, outpt_arena: &[OutPt]) {
     std::mem::swap(&mut outrec.front_edge, &mut outrec.back_edge);
-    outrec.pts = outpt_arena[outrec.pts as usize].next;
+    outrec.pts = idx(outpt_arena, outrec.pts).next;
 }
 
 /// Check if intersect node edges are adjacent in AEL
 /// Direct port from clipper.engine.cpp EdgesAdjacentInAEL (line 468)
 #[inline]
 pub fn edges_adjacent_in_ael(inode: &IntersectNode, active_arena: &[Active]) -> bool {
-    active_arena[inode.edge1 as usize].next_in_ael == inode.edge2
-        || active_arena[inode.edge1 as usize].prev_in_ael == inode.edge2
+    idx(active_arena, inode.edge1).next_in_ael == inode.edge2
+        || idx(active_arena, inode.edge1).prev_in_ael == inode.edge2
 }
 
 /// Check if an edge is joined
@@ -534,17 +516,18 @@ pub fn set_owner(outrec_list: &mut [OutRec], outrec_idx: Idx, new_owner_idx: Idx
     // precondition: new_owner_idx is valid
     // Direct port from C++: new_owner->owner = GetRealOutRec(new_owner->owner);
     // When owner is None, GetRealOutRec returns None (C++ handles nullptr correctly)
-    outrec_list[new_owner_idx as usize].owner =
-        get_real_outrec(outrec_list, outrec_list[new_owner_idx as usize].owner);
+    let owner = idx(outrec_list, new_owner_idx).owner;
+    idx_mut(outrec_list, new_owner_idx).owner = get_real_outrec(outrec_list, owner);
     let mut tmp = new_owner_idx;
     while tmp != NONE {
         if tmp == outrec_idx {
-            outrec_list[new_owner_idx as usize].owner = outrec_list[outrec_idx as usize].owner;
+            let outrec_owner = idx(outrec_list, outrec_idx).owner;
+            idx_mut(outrec_list, new_owner_idx).owner = outrec_owner;
             break;
         }
-        tmp = outrec_list[tmp as usize].owner;
+        tmp = idx(outrec_list, tmp).owner;
     }
-    outrec_list[outrec_idx as usize].owner = new_owner_idx;
+    idx_mut(outrec_list, outrec_idx).owner = new_owner_idx;
 }
 
 /// Point in polygon test for OutPt-based polygons
@@ -554,71 +537,66 @@ pub fn point_in_op_polygon(
     op_start: Idx,
     outpt_arena: &[OutPt],
 ) -> PointInPolygonResult {
-    let next = outpt_arena[op_start as usize].next;
-    if next == op_start || outpt_arena[op_start as usize].prev == next {
+    let next = idx(outpt_arena, op_start).next;
+    if next == op_start || idx(outpt_arena, op_start).prev == next {
         return PointInPolygonResult::IsOutside;
     }
 
     let mut op = op_start;
     loop {
-        if outpt_arena[op as usize].pt.y != pt.y {
+        if idx(outpt_arena, op).pt.y != pt.y {
             break;
         }
-        op = outpt_arena[op as usize].next;
+        op = idx(outpt_arena, op).next;
         if op == op_start {
             break;
         }
     }
-    if outpt_arena[op as usize].pt.y == pt.y {
+    if idx(outpt_arena, op).pt.y == pt.y {
         return PointInPolygonResult::IsOutside;
     }
 
-    let mut is_above = outpt_arena[op as usize].pt.y < pt.y;
+    let mut is_above = idx(outpt_arena, op).pt.y < pt.y;
     let starting_above = is_above;
     let mut val = 0;
-    let mut op2 = outpt_arena[op as usize].next;
+    let mut op2 = idx(outpt_arena, op).next;
 
     while op2 != op {
         if is_above {
-            while op2 != op && outpt_arena[op2 as usize].pt.y < pt.y {
-                op2 = outpt_arena[op2 as usize].next;
+            while op2 != op && idx(outpt_arena, op2).pt.y < pt.y {
+                op2 = idx(outpt_arena, op2).next;
             }
         } else {
-            while op2 != op && outpt_arena[op2 as usize].pt.y > pt.y {
-                op2 = outpt_arena[op2 as usize].next;
+            while op2 != op && idx(outpt_arena, op2).pt.y > pt.y {
+                op2 = idx(outpt_arena, op2).next;
             }
         }
         if op2 == op {
             break;
         }
 
-        if outpt_arena[op2 as usize].pt.y == pt.y {
-            let prev = outpt_arena[op2 as usize].prev;
-            if outpt_arena[op2 as usize].pt.x == pt.x
-                || (outpt_arena[op2 as usize].pt.y == outpt_arena[prev as usize].pt.y
-                    && (pt.x < outpt_arena[prev as usize].pt.x)
-                        != (pt.x < outpt_arena[op2 as usize].pt.x))
+        if idx(outpt_arena, op2).pt.y == pt.y {
+            let prev = idx(outpt_arena, op2).prev;
+            if idx(outpt_arena, op2).pt.x == pt.x
+                || (idx(outpt_arena, op2).pt.y == idx(outpt_arena, prev).pt.y
+                    && (pt.x < idx(outpt_arena, prev).pt.x) != (pt.x < idx(outpt_arena, op2).pt.x))
             {
                 return PointInPolygonResult::IsOn;
             }
-            op2 = outpt_arena[op2 as usize].next;
+            op2 = idx(outpt_arena, op2).next;
             if op2 == op {
                 break;
             }
             continue;
         }
 
-        let prev = outpt_arena[op2 as usize].prev;
-        if pt.x < outpt_arena[op2 as usize].pt.x && pt.x < outpt_arena[prev as usize].pt.x {
+        let prev = idx(outpt_arena, op2).prev;
+        if pt.x < idx(outpt_arena, op2).pt.x && pt.x < idx(outpt_arena, prev).pt.x {
             // do nothing
-        } else if pt.x > outpt_arena[prev as usize].pt.x && pt.x > outpt_arena[op2 as usize].pt.x {
+        } else if pt.x > idx(outpt_arena, prev).pt.x && pt.x > idx(outpt_arena, op2).pt.x {
             val = 1 - val;
         } else {
-            let i = cross_product_sign(
-                outpt_arena[prev as usize].pt,
-                outpt_arena[op2 as usize].pt,
-                pt,
-            );
+            let i = cross_product_sign(idx(outpt_arena, prev).pt, idx(outpt_arena, op2).pt, pt);
             if i == 0 {
                 return PointInPolygonResult::IsOn;
             }
@@ -627,16 +605,12 @@ pub fn point_in_op_polygon(
             }
         }
         is_above = !is_above;
-        op2 = outpt_arena[op2 as usize].next;
+        op2 = idx(outpt_arena, op2).next;
     }
 
     if is_above != starting_above {
-        let prev = outpt_arena[op2 as usize].prev;
-        let i = cross_product_sign(
-            outpt_arena[prev as usize].pt,
-            outpt_arena[op2 as usize].pt,
-            pt,
-        );
+        let prev = idx(outpt_arena, op2).prev;
+        let i = cross_product_sign(idx(outpt_arena, prev).pt, idx(outpt_arena, op2).pt, pt);
         if i == 0 {
             return PointInPolygonResult::IsOn;
         }
@@ -658,7 +632,7 @@ pub fn path2_contains_path1_outpt(op1_start: Idx, op2_start: Idx, outpt_arena: &
     let mut pip = PointInPolygonResult::IsOn;
     let mut op = op1_start;
     loop {
-        match point_in_op_polygon(outpt_arena[op as usize].pt, op2_start, outpt_arena) {
+        match point_in_op_polygon(idx(outpt_arena, op).pt, op2_start, outpt_arena) {
             PointInPolygonResult::IsOutside => {
                 if pip == PointInPolygonResult::IsOutside {
                     return false;
@@ -673,7 +647,7 @@ pub fn path2_contains_path1_outpt(op1_start: Idx, op2_start: Idx, outpt_arena: &
             }
             _ => {}
         }
-        op = outpt_arena[op as usize].next;
+        op = idx(outpt_arena, op).next;
         if op == op1_start {
             break;
         }
@@ -722,8 +696,8 @@ pub fn build_path64_from_outpt(
     is_open: bool,
     outpt_arena: &[OutPt],
 ) -> Option<Path64> {
-    let next = outpt_arena[op_start as usize].next;
-    if next == op_start || (!is_open && next == outpt_arena[op_start as usize].prev) {
+    let next = idx(outpt_arena, op_start).next;
+    if next == op_start || (!is_open && next == idx(outpt_arena, op_start).prev) {
         return None;
     }
 
@@ -731,23 +705,23 @@ pub fn build_path64_from_outpt(
     let (mut last_pt, mut op2);
 
     if reverse {
-        last_pt = outpt_arena[op_start as usize].pt;
-        op2 = outpt_arena[op_start as usize].prev;
+        last_pt = idx(outpt_arena, op_start).pt;
+        op2 = idx(outpt_arena, op_start).prev;
     } else {
-        let op_next = outpt_arena[op_start as usize].next;
-        last_pt = outpt_arena[op_next as usize].pt;
-        op2 = outpt_arena[op_next as usize].next;
+        let op_next = idx(outpt_arena, op_start).next;
+        last_pt = idx(outpt_arena, op_next).pt;
+        op2 = idx(outpt_arena, op_next).next;
         path.push(last_pt);
-        while op2 != outpt_arena[op_start as usize].next {
-            if outpt_arena[op2 as usize].pt != last_pt {
-                last_pt = outpt_arena[op2 as usize].pt;
+        while op2 != idx(outpt_arena, op_start).next {
+            if idx(outpt_arena, op2).pt != last_pt {
+                last_pt = idx(outpt_arena, op2).pt;
                 path.push(last_pt);
             }
-            op2 = outpt_arena[op2 as usize].next;
+            op2 = idx(outpt_arena, op2).next;
         }
         if !is_open
             && path.len() == 3
-            && is_very_small_triangle(outpt_arena[op_start as usize].next, outpt_arena)
+            && is_very_small_triangle(idx(outpt_arena, op_start).next, outpt_arena)
         {
             return None;
         }
@@ -757,11 +731,11 @@ pub fn build_path64_from_outpt(
     // reverse case
     path.push(last_pt);
     while op2 != op_start {
-        if outpt_arena[op2 as usize].pt != last_pt {
-            last_pt = outpt_arena[op2 as usize].pt;
+        if idx(outpt_arena, op2).pt != last_pt {
+            last_pt = idx(outpt_arena, op2).pt;
             path.push(last_pt);
         }
-        op2 = outpt_arena[op2 as usize].prev;
+        op2 = idx(outpt_arena, op2).prev;
     }
 
     if !is_open && path.len() == 3 && is_very_small_triangle(op_start, outpt_arena) {
@@ -784,8 +758,8 @@ pub fn build_path_d_from_outpt(
     outpt_arena: &[OutPt],
     inv_scale: f64,
 ) -> Option<PathD> {
-    let next = outpt_arena[op_start as usize].next;
-    if next == op_start || (!is_open && next == outpt_arena[op_start as usize].prev) {
+    let next = idx(outpt_arena, op_start).next;
+    if next == op_start || (!is_open && next == idx(outpt_arena, op_start).prev) {
         return None;
     }
 
@@ -793,21 +767,21 @@ pub fn build_path_d_from_outpt(
     let (mut last_pt, mut op2);
 
     if reverse {
-        last_pt = outpt_arena[op_start as usize].pt;
-        op2 = outpt_arena[op_start as usize].prev;
+        last_pt = idx(outpt_arena, op_start).pt;
+        op2 = idx(outpt_arena, op_start).prev;
     } else {
-        let op_next = outpt_arena[op_start as usize].next;
-        last_pt = outpt_arena[op_next as usize].pt;
-        op2 = outpt_arena[op_next as usize].next;
+        let op_next = idx(outpt_arena, op_start).next;
+        last_pt = idx(outpt_arena, op_next).pt;
+        op2 = idx(outpt_arena, op_next).next;
         path.push(PointD {
             x: last_pt.x as f64 * inv_scale,
             y: last_pt.y as f64 * inv_scale,
             #[cfg(feature = "using_z")]
             z: last_pt.z,
         });
-        while op2 != outpt_arena[op_start as usize].next {
-            if outpt_arena[op2 as usize].pt != last_pt {
-                last_pt = outpt_arena[op2 as usize].pt;
+        while op2 != idx(outpt_arena, op_start).next {
+            if idx(outpt_arena, op2).pt != last_pt {
+                last_pt = idx(outpt_arena, op2).pt;
                 path.push(PointD {
                     x: last_pt.x as f64 * inv_scale,
                     y: last_pt.y as f64 * inv_scale,
@@ -815,11 +789,9 @@ pub fn build_path_d_from_outpt(
                     z: last_pt.z,
                 });
             }
-            op2 = outpt_arena[op2 as usize].next;
+            op2 = idx(outpt_arena, op2).next;
         }
-        if path.len() == 3
-            && is_very_small_triangle(outpt_arena[op_start as usize].next, outpt_arena)
-        {
+        if path.len() == 3 && is_very_small_triangle(idx(outpt_arena, op_start).next, outpt_arena) {
             return None;
         }
         return if path.len() >= 2 { Some(path) } else { None };
@@ -833,8 +805,8 @@ pub fn build_path_d_from_outpt(
         z: last_pt.z,
     });
     while op2 != op_start {
-        if outpt_arena[op2 as usize].pt != last_pt {
-            last_pt = outpt_arena[op2 as usize].pt;
+        if idx(outpt_arena, op2).pt != last_pt {
+            last_pt = idx(outpt_arena, op2).pt;
             path.push(PointD {
                 x: last_pt.x as f64 * inv_scale,
                 y: last_pt.y as f64 * inv_scale,
@@ -842,7 +814,7 @@ pub fn build_path_d_from_outpt(
                 z: last_pt.z,
             });
         }
-        op2 = outpt_arena[op2 as usize].prev;
+        op2 = idx(outpt_arena, op2).prev;
     }
 
     if path.len() == 3 && is_very_small_triangle(op_start, outpt_arena) {
@@ -865,10 +837,10 @@ pub fn get_last_op(
     outrec_list: &[OutRec],
     outpt_arena: &[OutPt],
 ) -> Idx {
-    let or_idx = active_arena[hot_edge_idx as usize].outrec;
-    let result = outrec_list[or_idx as usize].pts;
-    if hot_edge_idx != outrec_list[or_idx as usize].front_edge {
-        outpt_arena[result as usize].next
+    let or_idx = idx(active_arena, hot_edge_idx).outrec;
+    let result = idx(outrec_list, or_idx).pts;
+    if hot_edge_idx != idx(outrec_list, or_idx).front_edge {
+        idx(outpt_arena, result).next
     } else {
         result
     }
@@ -877,12 +849,13 @@ pub fn get_last_op(
 /// Fix all OutPt outrec references in an OutRec
 /// Direct port from clipper.engine.cpp FixOutRecPts (line 2158)
 pub fn fix_outrec_pts(outrec_idx: Idx, outrec_list: &[OutRec], outpt_arena: &mut [OutPt]) {
-    let pts = outrec_list[outrec_idx as usize].pts;
+    let pts = idx(outrec_list, outrec_idx).pts;
     if pts != NONE {
         let mut op = pts;
         loop {
-            outpt_arena[op as usize].outrec = outrec_idx;
-            op = outpt_arena[op as usize].next;
+            let op_pt = idx_mut(outpt_arena, op);
+            op_pt.outrec = outrec_idx;
+            op = op_pt.next;
             if op == pts {
                 break;
             }
@@ -899,8 +872,8 @@ pub fn update_outrec_owner(outrec_idx: Idx, outrec_list: &[OutRec], outpt_arena:
 /// Move splits from one OutRec to another
 /// Direct port from clipper.engine.cpp MoveSplits (line 2269)
 pub fn move_splits(outrec_list: &mut [OutRec], from_or: Idx, to_or: Idx) {
-    let from_splits = std::mem::take(&mut outrec_list[from_or as usize].splits);
-    let to_splits = &mut outrec_list[to_or as usize].splits;
+    let from_splits = std::mem::take(&mut idx_mut(outrec_list, from_or).splits);
+    let to_splits = &mut idx_mut(outrec_list, to_or).splits;
     for s in from_splits {
         if s != to_or {
             to_splits.push(s);
@@ -911,45 +884,48 @@ pub fn move_splits(outrec_list: &mut [OutRec], from_or: Idx, to_or: Idx) {
 /// Uncouple an OutRec from its edges
 /// Direct port from clipper.engine.cpp UncoupleOutRec (line 425)
 pub fn uncouple_outrec(e_idx: Idx, active_arena: &mut [Active], outrec_list: &mut [OutRec]) {
-    let or_idx = active_arena[e_idx as usize].outrec;
+    let or_idx = idx(active_arena, e_idx).outrec;
     if or_idx != NONE {
-        let fe = outrec_list[or_idx as usize].front_edge;
+        let fe = idx(outrec_list, or_idx).front_edge;
         if fe != NONE {
-            active_arena[fe as usize].outrec = NONE;
+            idx_mut(active_arena, fe).outrec = NONE;
         }
-        let be = outrec_list[or_idx as usize].back_edge;
+        let be = idx(outrec_list, or_idx).back_edge;
         if be != NONE {
-            active_arena[be as usize].outrec = NONE;
+            idx_mut(active_arena, be).outrec = NONE;
         }
-        outrec_list[or_idx as usize].front_edge = NONE;
-        outrec_list[or_idx as usize].back_edge = NONE;
+        let or = idx_mut(outrec_list, or_idx);
+        or.front_edge = NONE;
+        or.back_edge = NONE;
     }
 }
 
 /// Extract an active from the SEL (sorted edge list)
 /// Direct port from clipper.engine.cpp ExtractFromSEL
 pub fn extract_from_sel(e_idx: Idx, active_arena: &mut [Active]) -> Idx {
-    let next = active_arena[e_idx as usize].next_in_sel;
+    let next = idx(active_arena, e_idx).next_in_sel;
     if next != NONE {
-        active_arena[next as usize].prev_in_sel = active_arena[e_idx as usize].prev_in_sel;
+        let e_prev = idx(active_arena, e_idx).prev_in_sel;
+        idx_mut(active_arena, next).prev_in_sel = e_prev;
     }
-    let prev_idx = active_arena[e_idx as usize].prev_in_sel;
+    let prev_idx = idx(active_arena, e_idx).prev_in_sel;
     if prev_idx != NONE {
-        active_arena[prev_idx as usize].next_in_sel = next;
+        idx_mut(active_arena, prev_idx).next_in_sel = next;
     }
-    active_arena[e_idx as usize].prev_in_sel = NONE;
-    active_arena[e_idx as usize].next_in_sel = NONE;
+    let e = idx_mut(active_arena, e_idx);
+    e.prev_in_sel = NONE;
+    e.next_in_sel = NONE;
     next
 }
 
 /// Insert tmp before left in SEL
 /// Direct port from clipper.engine.cpp Insert1Before2InSEL
 pub fn insert1_before2_in_sel(tmp_idx: Idx, left_idx: Idx, active_arena: &mut [Active]) {
-    let prev = active_arena[left_idx as usize].prev_in_sel;
-    active_arena[tmp_idx as usize].prev_in_sel = prev;
+    let prev = idx(active_arena, left_idx).prev_in_sel;
+    idx_mut(active_arena, tmp_idx).prev_in_sel = prev;
     if prev != NONE {
-        active_arena[prev as usize].next_in_sel = tmp_idx;
+        idx_mut(active_arena, prev).next_in_sel = tmp_idx;
     }
-    active_arena[tmp_idx as usize].next_in_sel = left_idx;
-    active_arena[left_idx as usize].prev_in_sel = tmp_idx;
+    idx_mut(active_arena, tmp_idx).next_in_sel = left_idx;
+    idx_mut(active_arena, left_idx).prev_in_sel = tmp_idx;
 }

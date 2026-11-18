@@ -364,12 +364,12 @@ impl RectClip64 {
 
     #[inline]
     fn outpt2(&self, i: Idx) -> &OutPt2 {
-        &self.outpt2_arena[i as usize]
+        idx(&self.outpt2_arena, i)
     }
 
     #[inline]
     fn outpt2_mut(&mut self, i: Idx) -> &mut OutPt2 {
-        &mut self.outpt2_arena[i as usize]
+        idx_mut(&mut self.outpt2_arena, i)
     }
 
     /// Add a point to the current result path
@@ -412,9 +412,9 @@ impl RectClip64 {
     /// Direct port from clipper.rectclip.cpp line 349
     fn add_corner_prev_curr(&mut self, prev: Location, curr: Location) {
         if heading_clockwise(prev, curr) {
-            self.add(self.rect_as_path[prev as usize], false);
+            self.add(*idx(&self.rect_as_path, prev as Idx), false);
         } else {
-            self.add(self.rect_as_path[curr as usize], false);
+            self.add(*idx(&self.rect_as_path, curr as Idx), false);
         }
     }
 
@@ -422,12 +422,12 @@ impl RectClip64 {
     /// Direct port from clipper.rectclip.cpp line 357
     fn add_corner_loc(&mut self, loc: &mut Location, is_clockwise: bool) {
         if is_clockwise {
-            let pt = self.rect_as_path[*loc as usize];
+            let pt = *idx(&self.rect_as_path, *loc as Idx);
             self.add(pt, false);
             *loc = get_adjacent_location(*loc, true);
         } else {
             *loc = get_adjacent_location(*loc, false);
-            let pt = self.rect_as_path[*loc as usize];
+            let pt = *idx(&self.rect_as_path, *loc as Idx);
             self.add(pt, false);
         }
     }
@@ -1168,12 +1168,12 @@ impl RectClipLines64 {
 
     #[inline]
     fn outpt2(&self, i: Idx) -> &OutPt2 {
-        &self.outpt2_arena[i as usize]
+        idx(&self.outpt2_arena, i)
     }
 
     #[inline]
     fn outpt2_mut(&mut self, i: Idx) -> &mut OutPt2 {
-        &mut self.outpt2_arena[i as usize]
+        idx_mut(&mut self.outpt2_arena, i)
     }
 
     fn clear(&mut self) {

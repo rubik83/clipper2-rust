@@ -825,8 +825,8 @@ impl ClipperBase {
             // Sort by y descending (bottom first), then by x ascending
             let vertex_arena = &self.vertex_arena;
             self.minima_list.sort_by(|a, b| {
-                let a_pt = vertex_arena[a.vertex as usize].pt;
-                let b_pt = vertex_arena[b.vertex as usize].pt;
+                let a_pt = idx(vertex_arena, a.vertex).pt;
+                let b_pt = idx(vertex_arena, b.vertex).pt;
                 if a_pt.y != b_pt.y {
                     b_pt.y.cmp(&a_pt.y) // descending by y (larger y = lower on screen)
                 } else {
@@ -1061,11 +1061,7 @@ impl ClipperBase {
                     i - 1
                 };
                 let next = (i + 1) % result.len() as Idx;
-                if is_collinear(
-                    result[prev as usize],
-                    result[i as usize],
-                    result[next as usize],
-                ) {
+                if is_collinear(*idx(&result, prev), *idx(&result, i), *idx(&result, next)) {
                     result.remove(i as usize);
                     i = i.saturating_sub(1);
                 } else {
@@ -3271,10 +3267,10 @@ impl ClipperBase {
         if let Some(z_cb) = &mut self.z_callback {
             let oa = &self.outpt_arena;
             z_cb(
-                &oa[prev_op as usize].pt,
-                &oa[split_op as usize].pt,
-                &oa[oa[split_op as usize].next as usize].pt,
-                &oa[next_next_op as usize].pt,
+                &idx(oa, prev_op).pt,
+                &idx(oa, split_op).pt,
+                &idx(oa, idx(oa, split_op).next).pt,
+                &idx(oa, next_next_op).pt,
                 &mut ip,
             );
         }
