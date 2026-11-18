@@ -17,31 +17,31 @@ use crate::engine_fns::*;
 /// Direct port from clipper.engine.h line 334
 #[derive(Debug, Clone)]
 pub struct PolyPath64 {
-    parent: Option<usize>, // index into polytree arena
-    children: Vec<usize>,  // indices into polytree arena
+    parent: Idx,        // index into polytree arena
+    children: Vec<Idx>, // indices into polytree arena
     pub(crate) polygon: Path64,
 }
 
 impl PolyPath64 {
     pub fn new() -> Self {
         Self {
-            parent: None,
+            parent: NONE,
             children: Vec::new(),
             polygon: Path64::new(),
         }
     }
 
-    pub fn with_parent(parent_idx: usize) -> Self {
+    pub fn with_parent(parent_idx: Idx) -> Self {
         Self {
-            parent: Some(parent_idx),
+            parent: parent_idx,
             children: Vec::new(),
             polygon: Path64::new(),
         }
     }
 
-    pub fn with_path(parent_idx: usize, path: Path64) -> Self {
+    pub fn with_path(parent_idx: Idx, path: Path64) -> Self {
         Self {
-            parent: Some(parent_idx),
+            parent: parent_idx,
             children: Vec::new(),
             polygon: path,
         }
@@ -55,11 +55,11 @@ impl PolyPath64 {
         self.children.len()
     }
 
-    pub fn parent(&self) -> Option<usize> {
+    pub fn parent(&self) -> Idx {
         self.parent
     }
 
-    pub fn children(&self) -> &[usize] {
+    pub fn children(&self) -> &[Idx] {
         &self.children
     }
 }
@@ -83,11 +83,19 @@ impl PolyTree64 {
         Self { nodes: vec![root] }
     }
 
+    pub fn node(&self, i: Idx) -> &PolyPath64 {
+        idx(&self.nodes, i)
+    }
+
+    fn node_mut(&mut self, i: Idx) -> &mut PolyPath64 {
+        idx_mut(&mut self.nodes, i)
+    }
+
     /// Add a child path to a parent node
-    pub fn add_child(&mut self, parent_idx: usize, path: Path64) -> usize {
-        let child_idx = self.nodes.len();
+    pub fn add_child(&mut self, parent_idx: Idx, path: Path64) -> Idx {
+        let child_idx = self.nodes.len() as Idx;
         self.nodes.push(PolyPath64::with_path(parent_idx, path));
-        self.nodes[parent_idx].children.push(child_idx);
+        self.node_mut(parent_idx).children.push(child_idx);
         child_idx
     }
 
@@ -103,26 +111,26 @@ impl PolyTree64 {
     }
 
     /// Get level of a node
-    pub fn level(&self, node_idx: usize) -> u32 {
+    pub fn level(&self, node_idx: Idx) -> u32 {
         let mut result = 0u32;
-        let mut p = self.nodes[node_idx].parent;
-        while let Some(parent_idx) = p {
+        let mut p = self.node(node_idx).parent;
+        while p != NONE {
             result += 1;
-            p = self.nodes[parent_idx].parent;
+            p = self.node(p).parent;
         }
         result
     }
 
     /// Check if a node is a hole
-    pub fn is_hole(&self, node_idx: usize) -> bool {
+    pub fn is_hole(&self, node_idx: Idx) -> bool {
         let lvl = self.level(node_idx);
         lvl > 0 && (lvl & 1) == 0
     }
 
     /// Get total area including children
-    pub fn area_of(&self, node_idx: usize) -> f64 {
-        let mut result = area(&self.nodes[node_idx].polygon);
-        for &child_idx in &self.nodes[node_idx].children {
+    pub fn area_of(&self, node_idx: Idx) -> f64 {
+        let mut result = area(&self.node(node_idx).polygon);
+        for &child_idx in &self.node(node_idx).children {
             result += self.area_of(child_idx);
         }
         result
@@ -139,8 +147,8 @@ impl Default for PolyTree64 {
 /// Direct port from clipper.engine.h line 385
 #[derive(Debug, Clone)]
 pub struct PolyPathD {
-    parent: Option<usize>,
-    children: Vec<usize>,
+    parent: Idx,
+    children: Vec<Idx>,
     polygon: PathD,
     pub(crate) scale: f64,
 }
@@ -148,16 +156,16 @@ pub struct PolyPathD {
 impl PolyPathD {
     pub fn new() -> Self {
         Self {
-            parent: None,
+            parent: NONE,
             children: Vec::new(),
             polygon: PathD::new(),
             scale: 1.0,
         }
     }
 
-    pub fn with_parent(parent_idx: usize, scale: f64) -> Self {
+    pub fn with_parent(parent_idx: Idx, scale: f64) -> Self {
         Self {
-            parent: Some(parent_idx),
+            parent: parent_idx,
             children: Vec::new(),
             polygon: PathD::new(),
             scale,
@@ -184,11 +192,11 @@ impl PolyPathD {
         self.scale = scale;
     }
 
-    pub fn parent(&self) -> Option<usize> {
+    pub fn parent(&self) -> Idx {
         self.parent
     }
 
-    pub fn children(&self) -> &[usize] {
+    pub fn children(&self) -> &[Idx] {
         &self.children
     }
 }
@@ -211,24 +219,32 @@ impl PolyTreeD {
         }
     }
 
-    pub fn add_child(&mut self, parent_idx: usize, path: PathD) -> usize {
-        let scale = self.nodes[parent_idx].scale;
-        let child_idx = self.nodes.len();
+    pub fn node(&self, i: Idx) -> &PolyPathD {
+        idx(&self.nodes, i)
+    }
+
+    fn node_mut(&mut self, i: Idx) -> &mut PolyPathD {
+        idx_mut(&mut self.nodes, i)
+    }
+
+    pub fn add_child(&mut self, parent_idx: Idx, path: PathD) -> Idx {
+        let scale = self.node(parent_idx).scale;
+        let child_idx = self.nodes.len() as Idx;
         let mut node = PolyPathD::with_parent(parent_idx, scale);
         node.polygon = path;
         self.nodes.push(node);
-        self.nodes[parent_idx].children.push(child_idx);
+        self.node_mut(parent_idx).children.push(child_idx);
         child_idx
     }
 
-    pub fn add_child_from_path64(&mut self, parent_idx: usize, path: &Path64) -> usize {
-        let scale = self.nodes[parent_idx].scale;
-        let child_idx = self.nodes.len();
+    pub fn add_child_from_path64(&mut self, parent_idx: Idx, path: &Path64) -> Idx {
+        let scale = self.node(parent_idx).scale;
+        let child_idx = self.nodes.len() as Idx;
         let mut node = PolyPathD::with_parent(parent_idx, scale);
         let mut error_code = 0;
         node.polygon = scale_path(path, scale, scale, &mut error_code);
         self.nodes.push(node);
-        self.nodes[parent_idx].children.push(child_idx);
+        self.node_mut(parent_idx).children.push(child_idx);
         child_idx
     }
 
@@ -250,9 +266,9 @@ impl PolyTreeD {
     pub fn level(&self, node_idx: usize) -> u32 {
         let mut result = 0u32;
         let mut p = self.nodes[node_idx].parent;
-        while let Some(parent_idx) = p {
+        while p != NONE {
             result += 1;
-            p = self.nodes[parent_idx].parent;
+            p = self.node(p).parent;
         }
         result
     }
@@ -725,11 +741,11 @@ impl ClipperD {
 
     fn convert_polypath64_node(
         src: &PolyTree64,
-        src_idx: usize,
-        dst_parent: usize,
+        src_idx: Idx,
+        dst_parent: Idx,
         dst: &mut PolyTreeD,
     ) {
-        let src_node = &src.nodes[src_idx];
+        let src_node = &src.node(src_idx);
         let dst_idx = dst.add_child_from_path64(dst_parent, &src_node.polygon);
         let children = src_node.children.clone();
         for &child_idx in &children {

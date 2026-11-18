@@ -1,11 +1,11 @@
 /*******************************************************************************
-* Author    :  Angus Johnson (original C++), Rust port                        *
-* Date      :  2025                                                           *
-* Website   :  https://www.angusj.com                                         *
-* Copyright :  Angus Johnson 2010-2025                                        *
-* Purpose   :  Simple public API for the Clipper Library                      *
-* License   :  https://www.boost.org/LICENSE_1_0.txt                          *
-*******************************************************************************/
+ * Author    :  Angus Johnson (original C++), Rust port                        *
+ * Date      :  2025                                                           *
+ * Website   :  https://www.angusj.com                                         *
+ * Copyright :  Angus Johnson 2010-2025                                        *
+ * Purpose   :  Simple public API for the Clipper Library                      *
+ * License   :  https://www.boost.org/LICENSE_1_0.txt                          *
+ *******************************************************************************/
 
 //! Public API convenience functions for the Clipper2 library.
 //!
@@ -23,7 +23,7 @@ use crate::engine::ClipType;
 use crate::engine_public::{Clipper64, ClipperD, PolyTree64, PolyTreeD};
 use crate::offset::{ClipperOffset, EndType, JoinType};
 use crate::rectclip::{RectClip64, RectClipLines64};
-use crate::FillRule;
+use crate::{FillRule, Idx};
 use num_traits::Num;
 
 // ============================================================================
@@ -419,31 +419,31 @@ pub fn rect_clip_line_d(rect: &RectD, line: &PathD, precision: i32) -> PathsD {
 /// separate `PolyFace64` values.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PolyFace64 {
-    pub node_index: usize,
+    pub node_index: Idx,
     pub depth: u32,
     pub outer: Path64,
     pub holes: Paths64,
-    pub hole_node_indices: Vec<usize>,
+    pub hole_node_indices: Vec<Idx>,
 }
 
 /// Helper: recursively collect paths from a PolyPath64 node.
-fn poly_path_to_paths64(tree: &PolyTree64, node_idx: usize, paths: &mut Paths64) {
-    let polygon = tree.nodes[node_idx].polygon().clone();
+fn poly_path_to_paths64(tree: &PolyTree64, node_idx: Idx, paths: &mut Paths64) {
+    let polygon = tree.node(node_idx).polygon().clone();
     if !polygon.is_empty() {
         paths.push(polygon);
     }
-    for &child_idx in tree.nodes[node_idx].children() {
+    for &child_idx in tree.node(node_idx).children() {
         poly_path_to_paths64(tree, child_idx, paths);
     }
 }
 
 /// Helper: recursively collect paths from a PolyPathD node.
-fn poly_path_to_paths_d(tree: &PolyTreeD, node_idx: usize, paths: &mut PathsD) {
-    let polygon = tree.nodes[node_idx].polygon().clone();
+fn poly_path_to_paths_d(tree: &PolyTreeD, node_idx: Idx, paths: &mut PathsD) {
+    let polygon = tree.node(node_idx).polygon().clone();
     if !polygon.is_empty() {
         paths.push(polygon);
     }
-    for &child_idx in tree.nodes[node_idx].children() {
+    for &child_idx in tree.node(node_idx).children() {
         poly_path_to_paths_d(tree, child_idx, paths);
     }
 }
@@ -460,14 +460,14 @@ pub fn poly_tree_to_paths64(polytree: &PolyTree64) -> Paths64 {
 }
 
 /// Helper: recursively collect solid faces from a PolyPath64 node.
-fn poly_path_to_faces64(tree: &PolyTree64, node_idx: usize, faces: &mut Vec<PolyFace64>) {
-    let node = &tree.nodes[node_idx];
+fn poly_path_to_faces64(tree: &PolyTree64, node_idx: Idx, faces: &mut Vec<PolyFace64>) {
+    let node = &tree.node(node_idx);
 
     if !node.polygon().is_empty() && !tree.is_hole(node_idx) {
         let mut holes = Paths64::new();
         let mut hole_node_indices = Vec::new();
         for &child_idx in node.children() {
-            let child = &tree.nodes[child_idx];
+            let child = &tree.node(child_idx);
             if tree.is_hole(child_idx) && !child.polygon().is_empty() {
                 holes.push(child.polygon().clone());
                 hole_node_indices.push(child_idx);
@@ -519,7 +519,7 @@ pub fn poly_tree_to_paths_d(polytree: &PolyTreeD) -> PathsD {
 pub fn check_polytree_fully_contains_children(polytree: &PolyTree64) -> bool {
     let root = &polytree.nodes[0];
     for &child_idx in root.children() {
-        if polytree.nodes[child_idx].count() > 0
+        if polytree.node(child_idx).count() > 0
             && !poly_path64_contains_children(polytree, child_idx)
         {
             return false;
@@ -530,10 +530,10 @@ pub fn check_polytree_fully_contains_children(polytree: &PolyTree64) -> bool {
 
 /// Helper: check if a PolyPath64 node's children are all contained within it.
 /// Direct port from clipper.h details::PolyPath64ContainsChildren.
-fn poly_path64_contains_children(tree: &PolyTree64, node_idx: usize) -> bool {
-    let parent_polygon = tree.nodes[node_idx].polygon();
-    for &child_idx in tree.nodes[node_idx].children() {
-        let child_polygon = tree.nodes[child_idx].polygon();
+fn poly_path64_contains_children(tree: &PolyTree64, node_idx: Idx) -> bool {
+    let parent_polygon = tree.node(node_idx).polygon();
+    for &child_idx in tree.node(node_idx).children() {
+        let child_polygon = tree.node(child_idx).polygon();
         // Return false if this child isn't fully contained by its parent.
         // Checking for a single vertex outside is a bit too crude since
         // it doesn't account for rounding errors. It's better to check
@@ -554,7 +554,7 @@ fn poly_path64_contains_children(tree: &PolyTree64, node_idx: usize) -> bool {
         }
 
         // Now check any nested children too
-        if tree.nodes[child_idx].count() > 0 && !poly_path64_contains_children(tree, child_idx) {
+        if tree.node(child_idx).count() > 0 && !poly_path64_contains_children(tree, child_idx) {
             return false;
         }
     }

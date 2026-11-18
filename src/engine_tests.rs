@@ -471,7 +471,7 @@ fn test_polytree64_add_child() {
     ];
     let child = pt.add_child(0, path.clone());
     assert_eq!(child, 1);
-    assert_eq!(pt.nodes[child].polygon(), &path);
+    assert_eq!(pt.node(child).polygon(), &path);
     assert_eq!(pt.root().children().len(), 1);
 }
 

@@ -4,10 +4,10 @@
 //
 // These are integration tests matching the original GoogleTest suite.
 
-use clipper2_rust::core::*;
 use clipper2_rust::engine::ClipType;
 use clipper2_rust::engine_public::*;
 use clipper2_rust::utils::file_io;
+use clipper2_rust::{core::*, Idx};
 
 fn test_data_path(name: &str) -> String {
     format!("{}/tests/data/{}", env!("CARGO_MANIFEST_DIR"), name)
@@ -15,8 +15,8 @@ fn test_data_path(name: &str) -> String {
 
 /// Helper: recursively check if a point is contained in a polytree
 /// Returns a counter: +1 for each outer containing the point, -1 for each hole
-fn poly_path_contains_point(tree: &PolyTree64, node_idx: usize, pt: Point64, counter: &mut i32) {
-    let node = &tree.nodes[node_idx];
+fn poly_path_contains_point(tree: &PolyTree64, node_idx: Idx, pt: Point64, counter: &mut i32) {
+    let node = &tree.node(node_idx);
     if !node.polygon().is_empty()
         && point_in_polygon(pt, node.polygon()) != PointInPolygonResult::IsOutside
     {
@@ -43,8 +43,8 @@ fn polytree_contains_point(tree: &PolyTree64, pt: Point64) -> bool {
 
 /// Get total area of all polygons in the polytree
 fn get_polytree_area(tree: &PolyTree64) -> f64 {
-    fn get_poly_path_area(tree: &PolyTree64, node_idx: usize, result: &mut f64) {
-        let node = &tree.nodes[node_idx];
+    fn get_poly_path_area(tree: &PolyTree64, node_idx: Idx, result: &mut f64) {
+        let node = &tree.node(node_idx);
         *result += area(node.polygon());
         for &child_idx in node.children() {
             get_poly_path_area(tree, child_idx, result);
@@ -66,13 +66,13 @@ fn root_count(tree: &PolyTree64) -> usize {
 /// Helper: get child node of root by index (equivalent to C++ `solution[idx]`)
 fn root_child(tree: &PolyTree64, idx: usize) -> &PolyPath64 {
     let child_idx = tree.root().children()[idx];
-    &tree.nodes[child_idx]
+    tree.node(child_idx)
 }
 
 /// Helper: get child node of a node by index (equivalent to C++ `node[idx]`)
 fn node_child<'a>(tree: &'a PolyTree64, node: &PolyPath64, idx: usize) -> &'a PolyPath64 {
     let child_idx = node.children()[idx];
-    &tree.nodes[child_idx]
+    tree.node(child_idx)
 }
 
 // ==========================================================================

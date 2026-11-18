@@ -3057,9 +3057,9 @@ impl ClipperBase {
     /// Process horizontal joins
     /// Direct port from clipper.engine.cpp ProcessHorzJoins (line 2279)
     fn process_horz_joins(&mut self) {
-        for idx in 0..self.horz_join_list.len() as Idx {
-            let op1 = self.horz_join_list[idx as usize].op1;
-            let op2 = self.horz_join_list[idx as usize].op2;
+        for cur_idx in 0..self.horz_join_list.len() as Idx {
+            let op1 = idx(&self.horz_join_list, cur_idx).op1;
+            let op2 = idx(&self.horz_join_list, cur_idx).op2;
             if op1 == NONE || op2 == NONE {
                 continue;
             }
@@ -3443,7 +3443,7 @@ impl ClipperBase {
             }
             let parent_pp = self.outrec(owner).polypath;
             let parent_pp = if parent_pp == NONE { 0 } else { parent_pp };
-            let pp = polytree.add_child(parent_pp as usize, path);
+            let pp = polytree.add_child(parent_pp, path);
             self.outrec_mut(outrec_idx).polypath = pp as Idx;
         } else {
             let pp = polytree.add_child(0, path);
