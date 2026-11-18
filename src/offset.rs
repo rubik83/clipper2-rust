@@ -14,7 +14,7 @@
 
 use crate::core::{
     area, constants, cross_product_two_vectors, dot_product_two_vectors, ellipse_point64,
-    get_segment_intersect_pt_d, reflect_point, strip_duplicates_path, translate_point, Path64,
+    get_segment_intersect_pt_d, reflect_point, strip_duplicates_path, translate_point, Idx, Path64,
     PathD, Paths64, Point64, PointD, Rect64,
 };
 use crate::engine::ClipType;
@@ -975,7 +975,7 @@ impl ClipperOffset {
                 if group_join_type == JoinType::Round {
                     let radius = abs_delta_local;
                     let steps = if self.steps_per_rad > 0.0 {
-                        (self.steps_per_rad * 2.0 * constants::PI).ceil() as usize
+                        (self.steps_per_rad * 2.0 * constants::PI).ceil() as Idx
                     } else {
                         0
                     };

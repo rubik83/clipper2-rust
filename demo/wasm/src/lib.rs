@@ -238,12 +238,7 @@ pub fn bounds(paths: &[f64]) -> Vec<f64> {
 
 #[wasm_bindgen]
 pub fn make_ellipse(cx: f64, cy: f64, rx: f64, ry: f64, steps: u32) -> Vec<f64> {
-    let path = ellipse_point64(
-        Point64::new(cx as i64, cy as i64),
-        rx,
-        ry,
-        if steps == 0 { 0 } else { steps as usize },
-    );
+    let path = ellipse_point64(Point64::new(cx as i64, cy as i64), rx, ry, steps);
     encode_single_path(&path)
 }
 

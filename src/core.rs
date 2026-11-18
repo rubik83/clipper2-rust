@@ -6,6 +6,9 @@
 use num_traits::{Float, Num, Zero};
 use std::fmt::{Debug, Display};
 
+/// Fixed-width 32-bit index type
+pub type Idx = u32;
+
 /// Fill rule determines how polygons with self-intersections are filled
 /// Direct port from clipper.core.h line 108
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -87,7 +90,7 @@ pub mod constants {
 
     /// Maximum coordinate value (INT64_MAX >> 2)
     pub const MAX_COORD: i64 = i64::MAX >> 2;
-    /// Minimum coordinate value  
+    /// Minimum coordinate value
     pub const MIN_COORD: i64 = -MAX_COORD;
     /// Invalid coordinate sentinel
     pub const INVALID: i64 = i64::MAX;
@@ -114,7 +117,7 @@ pub mod errors {
 
     /// Error codes (2^n) - non-fatal
     pub const PRECISION_ERROR_I: i32 = 1;
-    /// Error codes (2^n) - non-fatal  
+    /// Error codes (2^n) - non-fatal
     pub const SCALE_ERROR_I: i32 = 2;
     /// Error codes (2^n) - non-fatal
     pub const NON_PAIR_ERROR_I: i32 = 4;
@@ -227,7 +230,7 @@ impl<T> Point<T>
 where
     T: Num + Copy + PartialOrd,
 {
-    /// Scale a point by a floating-point factor  
+    /// Scale a point by a floating-point factor
     pub fn scale<F>(self, scale: F) -> Point<F>
     where
         F: Float,
@@ -416,7 +419,7 @@ where
         self.right - self.left
     }
 
-    /// Get height of rectangle  
+    /// Get height of rectangle
     pub fn height(&self) -> T {
         self.bottom - self.top
     }
@@ -613,7 +616,7 @@ impl ToF64 for f32 {
     }
 }
 
-/// Calculate cross product of two vectors formed by three points  
+/// Calculate cross product of two vectors formed by three points
 /// Direct port from clipper.core.h line 810
 #[inline]
 pub fn cross_product_three_points<T>(pt1: Point<T>, pt2: Point<T>, pt3: Point<T>) -> f64
@@ -678,7 +681,7 @@ where
 }
 
 /// Helper for returning -1, 0, or 1 based on sign
-/// Direct port from clipper.core.h line 697  
+/// Direct port from clipper.core.h line 697
 #[inline]
 pub fn tri_sign(x: i64) -> i32 {
     if x > 0 {
@@ -1769,7 +1772,7 @@ where
 
 /// Generate an elliptical path inscribed in a rectangle
 /// Direct port from clipper.core.h Ellipse(const Rect<T>&) overload
-pub fn ellipse_rect64(rect: &Rect64, steps: usize) -> Path64 {
+pub fn ellipse_rect64(rect: &Rect64, steps: Idx) -> Path64 {
     ellipse_point64(
         rect.mid_point(),
         rect.width() as f64 * 0.5,
@@ -1780,7 +1783,7 @@ pub fn ellipse_rect64(rect: &Rect64, steps: usize) -> Path64 {
 
 /// Generate an elliptical path inscribed in a rectangle
 /// Direct port from clipper.core.h Ellipse(const Rect<T>&) overload
-pub fn ellipse_rect_d(rect: &RectD, steps: usize) -> PathD {
+pub fn ellipse_rect_d(rect: &RectD, steps: Idx) -> PathD {
     ellipse_point_d(
         rect.mid_point(),
         rect.width() * 0.5,
@@ -1791,13 +1794,13 @@ pub fn ellipse_rect_d(rect: &RectD, steps: usize) -> PathD {
 
 /// Generate an elliptical path around a center point
 /// Direct port from clipper.h line 613 (Ellipse template function)
-pub fn ellipse_point64(center: Point64, radius_x: f64, radius_y: f64, steps: usize) -> Path64 {
+pub fn ellipse_point64(center: Point64, radius_x: f64, radius_y: f64, steps: Idx) -> Path64 {
     if radius_x <= 0.0 {
         return Path64::new();
     }
     let radius_y = if radius_y <= 0.0 { radius_x } else { radius_y };
     let steps = if steps <= 2 {
-        (constants::PI * ((radius_x + radius_y) / 2.0).sqrt()) as usize
+        (constants::PI * ((radius_x + radius_y) / 2.0).sqrt()) as Idx
     } else {
         steps
     };
@@ -1809,7 +1812,7 @@ pub fn ellipse_point64(center: Point64, radius_x: f64, radius_y: f64, steps: usi
     let co = (2.0 * constants::PI / steps as f64).cos();
     let mut dx = co;
     let mut dy = si;
-    let mut result = Path64::with_capacity(steps);
+    let mut result = Path64::with_capacity(steps as usize);
     result.push(Point64::new(
         (center.x as f64 + radius_x).round() as i64,
         center.y,
@@ -1828,13 +1831,13 @@ pub fn ellipse_point64(center: Point64, radius_x: f64, radius_y: f64, steps: usi
 
 /// Generate an elliptical path around a center point (PointD version)
 /// Direct port from clipper.h line 613 (Ellipse template function)
-pub fn ellipse_point_d(center: PointD, radius_x: f64, radius_y: f64, steps: usize) -> PathD {
+pub fn ellipse_point_d(center: PointD, radius_x: f64, radius_y: f64, steps: Idx) -> PathD {
     if radius_x <= 0.0 {
         return PathD::new();
     }
     let radius_y = if radius_y <= 0.0 { radius_x } else { radius_y };
     let steps = if steps <= 2 {
-        (constants::PI * ((radius_x + radius_y) / 2.0).sqrt()) as usize
+        (constants::PI * ((radius_x + radius_y) / 2.0).sqrt()) as Idx
     } else {
         steps
     };
@@ -1846,7 +1849,7 @@ pub fn ellipse_point_d(center: PointD, radius_x: f64, radius_y: f64, steps: usiz
     let co = (2.0 * constants::PI / steps as f64).cos();
     let mut dx = co;
     let mut dy = si;
-    let mut result = PathD::with_capacity(steps);
+    let mut result = PathD::with_capacity(steps as usize);
     result.push(PointD::new(center.x + radius_x, center.y));
     for _ in 1..steps {
         result.push(PointD::new(

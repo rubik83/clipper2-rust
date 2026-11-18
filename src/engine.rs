@@ -9,7 +9,7 @@ use crate::engine_fns::*;
 use crate::engine_public::PolyTree64;
 use std::collections::BinaryHeap;
 
-pub type Idx = u32;
+pub use crate::core::Idx;
 
 #[inline]
 pub fn idx<T>(array: &[T], idx: Idx) -> &T {
