@@ -346,11 +346,11 @@ fn test_clipper_base_new_out_pt() {
     let mut cb = ClipperBase::new();
     let or_idx = cb.new_out_rec();
     let op_idx = cb.new_out_pt(Point64::new(10, 20), or_idx);
-    assert_eq!(cb.outpt_arena[op_idx as usize].pt, Point64::new(10, 20));
-    assert_eq!(cb.outpt_arena[op_idx as usize].outrec, or_idx);
+    assert_eq!(idx(&cb.outpt_arena, op_idx).pt, Point64::new(10, 20));
+    assert_eq!(idx(&cb.outpt_arena, op_idx).outrec, or_idx);
     // Should be self-referencing (single node in circular list)
-    assert_eq!(cb.outpt_arena[op_idx as usize].next, op_idx);
-    assert_eq!(cb.outpt_arena[op_idx as usize].prev, op_idx);
+    assert_eq!(idx(&cb.outpt_arena, op_idx).next, op_idx);
+    assert_eq!(idx(&cb.outpt_arena, op_idx).prev, op_idx);
 }
 
 #[test]
@@ -360,12 +360,12 @@ fn test_clipper_base_duplicate_op() {
     let op1 = cb.new_out_pt(Point64::new(10, 20), or_idx);
 
     let op2 = cb.duplicate_op(op1, true);
-    assert_eq!(cb.outpt_arena[op2 as usize].pt, Point64::new(10, 20));
+    assert_eq!(idx(&cb.outpt_arena, op2).pt, Point64::new(10, 20));
     // op1 -> op2 -> op1
-    assert_eq!(cb.outpt_arena[op1 as usize].next, op2);
-    assert_eq!(cb.outpt_arena[op2 as usize].next, op1);
-    assert_eq!(cb.outpt_arena[op2 as usize].prev, op1);
-    assert_eq!(cb.outpt_arena[op1 as usize].prev, op2);
+    assert_eq!(idx(&cb.outpt_arena, op1).next, op2);
+    assert_eq!(idx(&cb.outpt_arena, op2).next, op1);
+    assert_eq!(idx(&cb.outpt_arena, op2).prev, op1);
+    assert_eq!(idx(&cb.outpt_arena, op1).prev, op2);
 }
 
 #[test]
@@ -376,14 +376,14 @@ fn test_clipper_base_swap_outrecs() {
     let e1 = cb.new_active();
     let e2 = cb.new_active();
 
-    cb.active_arena[e1 as usize].outrec = or1;
-    cb.active_arena[e2 as usize].outrec = or2;
+    idx_mut(&mut cb.active_arena, e1).outrec = or1;
+    idx_mut(&mut cb.active_arena, e2).outrec = or2;
     cb.outrec_mut(or1).front_edge = e1;
     cb.outrec_mut(or2).front_edge = e2;
 
     cb.swap_outrecs(e1, e2);
-    assert_eq!(cb.active_arena[e1 as usize].outrec, or2);
-    assert_eq!(cb.active_arena[e2 as usize].outrec, or1);
+    assert_eq!(idx(&cb.active_arena, e1).outrec, or2);
+    assert_eq!(idx(&cb.active_arena, e2).outrec, or1);
 }
 
 // ============================================================================
@@ -546,12 +546,12 @@ fn test_point_count_outpt() {
     outpt_arena.push(a);
     outpt_arena.push(b);
     outpt_arena.push(c);
-    outpt_arena[0].next = 1;
-    outpt_arena[0].prev = 2;
-    outpt_arena[1].next = 2;
-    outpt_arena[1].prev = 0;
-    outpt_arena[2].next = 0;
-    outpt_arena[2].prev = 1;
+    idx_mut(&mut outpt_arena, 0).next = 1;
+    idx_mut(&mut outpt_arena, 0).prev = 2;
+    idx_mut(&mut outpt_arena, 1).next = 2;
+    idx_mut(&mut outpt_arena, 1).prev = 0;
+    idx_mut(&mut outpt_arena, 2).next = 0;
+    idx_mut(&mut outpt_arena, 2).prev = 1;
 
     assert_eq!(point_count(0, &outpt_arena), 3);
 }
@@ -563,12 +563,12 @@ fn test_area_outpt_triangle() {
         OutPt::new(Point64::new(10, 0), 0),
         OutPt::new(Point64::new(10, 10), 0),
     ];
-    outpt_arena[0].next = 1;
-    outpt_arena[0].prev = 2;
-    outpt_arena[1].next = 2;
-    outpt_arena[1].prev = 0;
-    outpt_arena[2].next = 0;
-    outpt_arena[2].prev = 1;
+    idx_mut(&mut outpt_arena, 0).next = 1;
+    idx_mut(&mut outpt_arena, 0).prev = 2;
+    idx_mut(&mut outpt_arena, 1).next = 2;
+    idx_mut(&mut outpt_arena, 1).prev = 0;
+    idx_mut(&mut outpt_arena, 2).next = 0;
+    idx_mut(&mut outpt_arena, 2).prev = 1;
 
     let a = area_outpt(0, &outpt_arena);
     assert!((a.abs() - 50.0).abs() < 1e-10);
@@ -591,22 +591,22 @@ fn test_reverse_out_pts() {
         OutPt::new(Point64::new(10, 0), 0),
         OutPt::new(Point64::new(10, 10), 0),
     ];
-    outpt_arena[0].next = 1;
-    outpt_arena[0].prev = 2;
-    outpt_arena[1].next = 2;
-    outpt_arena[1].prev = 0;
-    outpt_arena[2].next = 0;
-    outpt_arena[2].prev = 1;
+    idx_mut(&mut outpt_arena, 0).next = 1;
+    idx_mut(&mut outpt_arena, 0).prev = 2;
+    idx_mut(&mut outpt_arena, 1).next = 2;
+    idx_mut(&mut outpt_arena, 1).prev = 0;
+    idx_mut(&mut outpt_arena, 2).next = 0;
+    idx_mut(&mut outpt_arena, 2).prev = 1;
 
     reverse_out_pts(0, &mut outpt_arena);
 
     // After reversal: 0->2->1->0 (reversed from 0->1->2->0)
-    assert_eq!(outpt_arena[0].next, 2);
-    assert_eq!(outpt_arena[0].prev, 1);
-    assert_eq!(outpt_arena[1].next, 0);
-    assert_eq!(outpt_arena[1].prev, 2);
-    assert_eq!(outpt_arena[2].next, 1);
-    assert_eq!(outpt_arena[2].prev, 0);
+    assert_eq!(idx(&outpt_arena, 0).next, 2);
+    assert_eq!(idx(&outpt_arena, 0).prev, 1);
+    assert_eq!(idx(&outpt_arena, 1).next, 0);
+    assert_eq!(idx(&outpt_arena, 1).prev, 2);
+    assert_eq!(idx(&outpt_arena, 2).next, 1);
+    assert_eq!(idx(&outpt_arena, 2).prev, 0);
 }
 
 // ============================================================================
