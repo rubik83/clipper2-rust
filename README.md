@@ -58,8 +58,9 @@ This port was created by [MatterHackers](https://www.matterhackers.com) using [C
 - **PolyTree Structure**: Hierarchical representation of polygon parent/child/hole relationships
 - **Face Extraction**: `poly_tree_to_faces64` flattens a `PolyTree64` into `PolyFace64` solid faces, each owning its immediate holes
 - **Z Coordinates** (optional `using_z` feature): mirrors the C++ `USINGZ` build — adds a `z` field to points, z-callbacks on `Clipper64`/`ClipperD`/`ClipperOffset`, and z-preservation through clipping and offsetting
+- **Unchecked Index Access** (optional `unchecked` feature): elides bounds checks in the `idx()`/`idx_mut()`/`idx_swap()` choke points for a measurable speedup. Adds `unsafe` code, so only enable if index validity is guaranteed (the library's own call sites are always in bounds)
 - **SVG Output**: Built-in SVG writer for visualization and debugging
-- **100% Safe Rust**: Zero `unsafe` blocks — enforced at compile time with `#![forbid(unsafe_code)]`
+- **100% Safe Rust** (default features): zero `unsafe` blocks — enforced at compile time with `#![deny(unsafe_code)]`; the `unchecked` feature opts out of this for index access
 
 ## Visual Examples
 

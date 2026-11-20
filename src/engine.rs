@@ -11,19 +11,63 @@ use std::collections::BinaryHeap;
 
 pub use crate::core::Idx;
 
-#[inline]
+/// Element access at `idx` — the single choke point for `[]` in this crate.
+///
+/// Bounds-checked by default. With the `unchecked` feature the check is
+/// elided and the caller must guarantee `idx < array.len()`.
+#[cfg(not(feature = "unchecked"))]
+#[inline(always)]
 pub fn idx<T>(array: &[T], idx: Idx) -> &T {
     &array[idx as usize]
 }
 
-#[inline]
+#[cfg(feature = "unchecked")]
+#[inline(always)]
+#[allow(unsafe_code)]
+pub fn idx<T>(array: &[T], idx: Idx) -> &T {
+    // SAFETY: callers only pass indices known to be in bounds; the
+    // debug_assert catches violations in debug builds.
+    debug_assert!((idx as usize) < array.len());
+    unsafe { array.get_unchecked(idx as usize) }
+}
+
+/// Mutable element access at `idx` — the single choke point for `&mut []`
+/// in this crate. See [`idx`] for the `unchecked` feature contract.
+#[cfg(not(feature = "unchecked"))]
+#[inline(always)]
 pub fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
     &mut array[idx as usize]
 }
 
-#[inline]
+#[cfg(feature = "unchecked")]
+#[inline(always)]
+#[allow(unsafe_code)]
+pub fn idx_mut<T>(array: &mut [T], idx: Idx) -> &mut T {
+    // SAFETY: callers only pass indices known to be in bounds; the
+    // debug_assert catches violations in debug builds.
+    debug_assert!((idx as usize) < array.len());
+    unsafe { array.get_unchecked_mut(idx as usize) }
+}
+
+/// Swap the elements at `idx_a` and `idx_b` — the single choke point for
+/// `swap` in this crate. See [`idx`] for the `unchecked` feature contract.
+#[cfg(not(feature = "unchecked"))]
+#[inline(always)]
 pub fn idx_swap<T>(array: &mut [T], idx_a: Idx, idx_b: Idx) {
     array.swap(idx_a as usize, idx_b as usize)
+}
+
+#[cfg(feature = "unchecked")]
+#[inline(always)]
+#[allow(unsafe_code)]
+pub fn idx_swap<T>(array: &mut [T], idx_a: Idx, idx_b: Idx) {
+    // SAFETY: callers only pass indices known to be in bounds; the
+    // debug_assert catches violations in debug builds.
+    debug_assert!((idx_a as usize) < array.len() && (idx_b as usize) < array.len());
+    unsafe {
+        let ptr = array.as_mut_ptr();
+        std::ptr::swap(ptr.add(idx_a as usize), ptr.add(idx_b as usize));
+    }
 }
 
 // ============================================================================

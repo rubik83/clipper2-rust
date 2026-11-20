@@ -31,6 +31,11 @@ default = []
 # support on Clipper64/ClipperD.
 using_z = []
 
+# Elide bounds checks in the idx()/idx_mut()/idx_swap() choke points for a
+# measurable speedup. Adds unsafe code; only enable if index validity is
+# guaranteed (the library's own call sites are always in bounds).
+unchecked = []
+
 [lib]
 name = "clipper2_rust"
 path = "src/lib.rs"
